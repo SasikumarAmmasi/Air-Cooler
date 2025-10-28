@@ -18,7 +18,7 @@ uploaded_file = st.file_uploader("Upload the Excel file", type=['xlsx', 'xls'])
 
 if uploaded_file is not None:
     # Get input constants from user
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4) # Changed from 3 to 4 columns
     
     with col1:
         RATED_POWER = st.number_input("Rated Power (kW)", value=30.0, step=0.1)
@@ -28,6 +28,9 @@ if uploaded_file is not None:
     
     with col3:
         DESIGN_UA = st.number_input("Design UA (kcal/hr.m².°C)", value=100000.0, step=100.0)
+    
+    with col4: # NEW INPUT FIELD
+        DESIGN_TS_OUTLET_TEMP = st.number_input("Design TS Outlet Temp (°C)", value=37.0, step=0.1)
     
     if st.button("Generate Performance Curves"):
         with st.spinner("Processing data and generating plots..."):
@@ -42,7 +45,7 @@ if uploaded_file is not None:
                 st.write("DataFrame columns after reading Excel and stripping whitespace:")
                 st.write(df.columns.tolist())
 
-                # --- FIX COLUMN ALIGNMENT ISSUE ---
+                # --- FIX COLUMN ALIGNMENT ISSUE (Keep all existing renames) ---
                 df = df.rename(columns={
                     'TS Gas Mass Flow (kg/h)': 'Mass Flow Rate (kg/hr)',
                     'TS Inlet Temperature (Deg C)': 'TS Inlet Temp (Deg C)',
@@ -59,7 +62,8 @@ if uploaded_file is not None:
                     'Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)',
                     'Heat Exchanger Duty (kcal/hr)',
                     'Break Power/Fan Summer (kW)',
-                    'Break Power/Fan Winter (kW)'
+                    'Break Power/Fan Winter (kW)',
+                    'TS Outlet Temperature (Deg C)' # ADDED for Plot 2 secondary axis
                 ]
                 for col in cols_to_convert:
                     if col in df.columns:
@@ -85,7 +89,7 @@ if uploaded_file is not None:
                     75.0: '#8c564b'   # Brown
                 }
 
-                # --- Plot 1: Flow vs UA and Flow vs Duty ---
+                # --- Plot 1: Flow vs UA and Flow vs Duty (UNCHANGED) ---
                 fig1, ax1 = plt.subplots(figsize=(14, 8))
                 fig1.suptitle('Air Cooler Performance Curve: UA and Heat Duty vs. Mass Flow Rate', fontsize=16, fontweight='bold')
 
@@ -195,17 +199,26 @@ if uploaded_file is not None:
                     mime="image/png"
                 )
 
-                # --- Plot 2: Flow vs Fan Power ---
+                # --------------------------------------------------------------------------
+                # --- Plot 2: Flow vs Fan Power and TS Outlet Temp (MODIFIED) ---
+                # --------------------------------------------------------------------------
                 fig2, ax2 = plt.subplots(figsize=(14, 8))
-                fig2.suptitle('Air Cooler Performance Curve: Fan Power vs. Mass Flow Rate', fontsize=16, fontweight='bold')
+                fig2.suptitle('Air Cooler Performance Curve: Fan Power and TS Outlet Temperature vs. Mass Flow Rate', fontsize=16, fontweight='bold')
 
                 ax2.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
-                ax2.set_ylabel('Break Power/Fan (kW)', fontsize=12)
-                ax2.tick_params(axis='y')
+                ax2.set_ylabel('Break Power/Fan (kW)', color='blue', fontsize=12) # Added color for clarity
+                ax2.tick_params(axis='y', labelcolor='blue')
 
-                # Plotting Fan Power
+                # Create secondary y-axis for TS Outlet Temperature
+                ax4 = ax2.twinx()
+                temp_out_color = '#d62728' # Red for the secondary axis/lines
+                ax4.spines['right'].set_color(temp_out_color) # Set the spine color
+                ax4.set_ylabel('TS Outlet Temperature (Deg C)', color=temp_out_color, fontsize=12)
+                ax4.tick_params(axis='y', labelcolor=temp_out_color)
+
+                # Plotting Fan Power and TS Outlet Temp
                 for name, group in grouped:
-                    # Summer Power
+                    # Summer Power (on ax2)
                     ax2.plot(
                         group['Mass Flow Rate (kg/hr)'],
                         group['Break Power/Fan Summer (kW)'],
@@ -214,7 +227,7 @@ if uploaded_file is not None:
                         marker='',
                         label=f'Summer Power @ {name}°C'
                     )
-                    # Winter Power
+                    # Winter Power (on ax2)
                     ax2.plot(
                         group['Mass Flow Rate (kg/hr)'],
                         group['Break Power/Fan Winter (kW)'],
@@ -223,8 +236,31 @@ if uploaded_file is not None:
                         marker='',
                         label=f'Winter Power @ {name}°C'
                     )
+                    
+                    # TS Outlet Temperature (on ax4) - NEW PLOT
+                    ax4.plot(
+                        group['Mass Flow Rate (kg/hr)'],
+                        group['TS Outlet Temperature (Deg C)'],
+                        color=temp_colors.get(name, 'k'),
+                        linestyle='-',
+                        marker='.', # Added a small marker to distinguish lines
+                        linewidth=1.5,
+                        label=f'TS Outlet Temp @ {name}°C'
+                    )
 
-                # Plot Fixed Rated Power (Dark Dashes Line)
+                    # Shade area above Design TS Outlet Temp (on ax4) - NEW SHADING
+                    ax4.fill_between(
+                        group['Mass Flow Rate (kg/hr)'],
+                        group['TS Outlet Temperature (Deg C)'],
+                        DESIGN_TS_OUTLET_TEMP,
+                        where=(group['TS Outlet Temperature (Deg C)'] > DESIGN_TS_OUTLET_TEMP),
+                        color='red',
+                        alpha=0.3,
+                        interpolate=True
+                    )
+
+
+                # Plot Fixed Rated Power (on ax2)
                 ax2.axhline(
                     y=RATED_POWER,
                     color='k',
@@ -233,23 +269,46 @@ if uploaded_file is not None:
                     label=f'Rated Power ({RATED_POWER} kW)'
                 )
 
+                # Plot Design TS Outlet Temperature (on ax4) - NEW HORIZONTAL LINE
+                ax4.axhline(
+                    y=DESIGN_TS_OUTLET_TEMP,
+                    color=temp_out_color, 
+                    linestyle='--',
+                    linewidth=2.5,
+                    label=f'Design TS Outlet Temp ({DESIGN_TS_OUTLET_TEMP} °C)'
+                )
+
                 # Adjust AXIS 2 (Fan Power) limits
                 min_power = df[['Break Power/Fan Summer (kW)', 'Break Power/Fan Winter (kW)']].min().min()
                 max_power = max(df[['Break Power/Fan Summer (kW)', 'Break Power/Fan Winter (kW)']].max().max(), RATED_POWER)
                 ax2.set_ylim(min_power * 0.9, max_power * 1.1)
 
-                # Combine legends for Plot 2
-                lines_ax2, labels_ax2 = ax2.get_legend_handles_labels()
+                # Adjust AXIS 4 (TS Outlet Temp) limits (optional, but robust)
+                min_temp = df['TS Outlet Temperature (Deg C)'].min()
+                max_temp = max(df['TS Outlet Temperature (Deg C)'].max(), DESIGN_TS_OUTLET_TEMP)
+                ax4.set_ylim(min_temp * 0.9, max_temp * 1.1)
 
+
+                # Combine legends for Plot 2 - MODIFIED LOGIC
+                lines_ax2, labels_ax2 = ax2.get_legend_handles_labels()
+                lines_ax4, labels_ax4 = ax4.get_legend_handles_labels()
+
+                unique_labels_2 = {}
+                for h, l in zip(lines_ax2 + lines_ax4, labels_ax2 + labels_ax4):
+                    unique_labels_2[l] = h
+
+                combined_lines_2 = list(unique_labels_2.values())
+                combined_labels_2 = list(unique_labels_2.keys())
+                
                 fig2.tight_layout(rect=[0, 0.15, 0.95, 0.98])
                 ax2.legend(
-                    lines_ax2,
-                    labels_ax2,
+                    combined_lines_2,
+                    combined_labels_2,
                     loc='lower center',
-                    bbox_to_anchor=(0.5, -0.25),
+                    bbox_to_anchor=(0.5, -0.3), # Adjusted bbox slightly lower for more items
                     ncol=5,
                     frameon=False,
-                    fontsize=9
+                    fontsize=8 # Reduced font size to accommodate more items
                 )
 
                 # Display Plot 2 in Streamlit
@@ -260,9 +319,9 @@ if uploaded_file is not None:
                 fig2.savefig(buf2, format='png', bbox_inches='tight')
                 buf2.seek(0)
                 st.download_button(
-                    label="Download Fan Power Plot",
+                    label="Download Fan Power & Outlet Temp Plot",
                     data=buf2,
-                    file_name="Air_Cooler_Performance_Curve_Fan_Power.png",
+                    file_name="Air_Cooler_Performance_Curve_Fan_Power_Outlet_Temp.png",
                     mime="image/png"
                 )
 
