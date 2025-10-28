@@ -243,7 +243,7 @@ if uploaded_file is not None:
                         group['TS Outlet Temperature (Deg C)'],
                         color=temp_colors.get(name, 'k'),
                         linestyle='-',
-                        marker='.', # Added a small marker to distinguish lines
+                        marker='', # Added a small marker to distinguish lines
                         linewidth=1.5,
                         label=f'TS Outlet Temp @ {name}°C'
                     )
