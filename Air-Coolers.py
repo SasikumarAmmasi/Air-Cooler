@@ -179,8 +179,8 @@ if uploaded_file is not None:
                     combined_lines_1,
                     combined_labels_1,
                     loc='lower center',
-                    bbox_to_anchor=(0.5, -0.3),
-                    ncol=4,
+                    bbox_to_anchor=(0.5, -0.25),
+                    ncol=5,
                     frameon=False,
                     fontsize=9
                 )
@@ -305,7 +305,7 @@ if uploaded_file is not None:
                     combined_lines_2,
                     combined_labels_2,
                     loc='lower center',
-                    bbox_to_anchor=(0.5, -0.3), # Adjusted bbox slightly lower for more items
+                    bbox_to_anchor=(0.5, -0.25), # Adjusted bbox slightly lower for more items
                     ncol=5,
                     frameon=False,
                     fontsize=8 # Reduced font size to accommodate more items
