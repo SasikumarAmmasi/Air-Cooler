@@ -35,9 +35,7 @@ if uploaded_file is not None:
     if st.button("Generate Performance Curves for All Sheets"):
         with st.spinner("Processing data and generating plots..."):
             try:
-                # --------------------------------------------------------------------------
-                # 📢 KEY CHANGE 1: Load ALL sheets into a dictionary
-                # --------------------------------------------------------------------------
+                # Load ALL sheets into a dictionary
                 all_sheets_data = pd.read_excel(uploaded_file, sheet_name=None)
 
                 # --- Color/Style Maps (Defined once) ---
@@ -50,9 +48,7 @@ if uploaded_file is not None:
                     75.0: '#8c564b'   # Brown
                 }
                 
-                # --------------------------------------------------------------------------
-                # 📢 KEY CHANGE 2: Iterate over each sheet
-                # --------------------------------------------------------------------------
+                # Iterate over each sheet
                 for sheet_name, df in all_sheets_data.items():
                     st.header(f"Results for Sheet: **{sheet_name}**")
                     
@@ -81,7 +77,6 @@ if uploaded_file is not None:
                     ]
                     for col in cols_to_convert:
                         if col in df.columns:
-                            # Drop rows where critical columns are NaN after conversion
                             df[col] = pd.to_numeric(df[col], errors='coerce')
 
                     # Remove rows where key columns are NaN
@@ -89,9 +84,10 @@ if uploaded_file is not None:
                     
                     if df.empty:
                         st.warning(f"Sheet '{sheet_name}' is empty or contains no valid data after cleaning. Skipping plots for this sheet.")
+                        st.markdown("---")
                         continue
 
-                    # *** CRUCIAL FIX: Make Heat Exchanger Duty positive (take absolute value) ***
+                    # *** Make Heat Exchanger Duty positive (take absolute value) ***
                     df['Heat Exchanger Duty (kcal/hr)'] = df['Heat Exchanger Duty (kcal/hr)'].abs()
 
                     # Group data by the TS Inlet Temperature for distinct curves
@@ -102,7 +98,7 @@ if uploaded_file is not None:
                     # ==============================================================================
 
                     fig1, ax1 = plt.subplots(figsize=(14, 8))
-                    # 📢 DYNAMIC TITLE
+                    # DYNAMIC TITLE
                     fig1.suptitle(f'Sheet: {sheet_name} | Performance Curve: UA and Heat Duty vs. Mass Flow Rate', fontsize=16, fontweight='bold')
 
                     ax1.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
@@ -210,6 +206,9 @@ if uploaded_file is not None:
                         file_name=f"Air_Cooler_Performance_Curve_UA_Duty_{sheet_name}.png",
                         mime="image/png"
                     )
+                    
+                    # 📢 CRITICAL FIX: Close the figure after displaying/saving
+                    plt.close(fig1)
 
                     st.markdown("---")
                     
@@ -218,7 +217,7 @@ if uploaded_file is not None:
                     # ==============================================================================
                     
                     fig2, ax2 = plt.subplots(figsize=(14, 8))
-                    # 📢 DYNAMIC TITLE
+                    # DYNAMIC TITLE
                     fig2.suptitle(f'Sheet: {sheet_name} | Performance Curve: Fan Power and TS Outlet Temperature vs. Mass Flow Rate', fontsize=16, fontweight='bold')
 
                     ax2.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
@@ -339,6 +338,9 @@ if uploaded_file is not None:
                         file_name=f"Air_Cooler_Performance_Curve_Fan_Power_Outlet_Temp_{sheet_name}.png",
                         mime="image/png"
                     )
+                    
+                    # 📢 CRITICAL FIX: Close the figure after displaying/saving
+                    plt.close(fig2)
                     
                     st.markdown("---") # Separator between sheet results
 
