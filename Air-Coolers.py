@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 import io
-import xlsxwriter # Ensure this library is installed (`pip install xlsxwriter`)
+import xlsxwriter 
 
 # ==============================================================================
 # STREAMLIT APP CONFIGURATION
@@ -39,11 +39,9 @@ if uploaded_file is not None:
         output = io.BytesIO()
         
         # Use ExcelWriter with xlsxwriter engine for image support
-        # The 'mode' is 'w' (write) because we are creating a new file
-        # The 'engine_kwargs' are necessary for writing bytes to Streamlit's download buffer
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             
-            # Get the workbook object for inserting images
+            # Get the workbook object for image insertion
             workbook = writer.book
             
             with st.spinner("Processing data, generating plots, and compiling Excel report..."):
@@ -61,14 +59,15 @@ if uploaded_file is not None:
                         75.0: '#8c564b'   # Brown
                     }
                     
-                    # Iterate over each sheet
+                    # --------------------------------------------------------------------------
+                    # 🔁 Iterate over each sheet
+                    # --------------------------------------------------------------------------
                     for sheet_name, df in all_sheets_data.items():
                         st.header(f"Processing Sheet: **{sheet_name}**")
                         
-                        # Clean column names by stripping whitespace
+                        # --- Data Cleaning and Standardization (same as prior correct code) ---
                         df.columns = df.columns.str.strip()
 
-                        # --- FIX COLUMN ALIGNMENT ISSUE ---
                         df = df.rename(columns={
                             'TS Gas Mass Flow (kg/h)': 'Mass Flow Rate (kg/hr)',
                             'TS Inlet Temperature (Deg C)': 'TS Inlet Temp (Deg C)',
@@ -80,7 +79,6 @@ if uploaded_file is not None:
                             'Air Mass Flow (kg/h)': 'Air Mass Flow (kg/h)'
                         })
 
-                        # Convert required columns to float, coercing errors
                         cols_to_convert = [
                             'Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)',
                             'Heat Exchanger Duty (kcal/hr)',
@@ -92,34 +90,32 @@ if uploaded_file is not None:
                             if col in df.columns:
                                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-                        # Remove rows where key columns are NaN
                         df.dropna(subset=['Mass Flow Rate (kg/hr)', 'TS Inlet Temp (Deg C)', 'Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)', 'Heat Exchanger Duty (kcal/hr)', 'TS Outlet Temperature (Deg C)'], inplace=True)
                         
                         if df.empty:
-                            st.warning(f"Sheet '{sheet_name}' is empty or contains no valid data after cleaning. Skipping plots and Excel sheet for this data.")
+                            st.warning(f"Sheet '{sheet_name}' is empty or contains no valid data after cleaning. Skipping plots for this sheet.")
                             st.markdown("---")
                             continue
 
-                        # *** Make Heat Exchanger Duty positive (take absolute value) ***
                         df['Heat Exchanger Duty (kcal/hr)'] = df['Heat Exchanger Duty (kcal/hr)'].abs()
-
-                        # Group data by the TS Inlet Temperature for distinct curves
                         grouped = df.groupby('TS Inlet Temp (Deg C)')
 
                         # --- Write Data to Excel ---
                         # Use a clean sheet name (Excel sheet names are limited to 31 chars)
-                        clean_sheet_name = sheet_name[:31] 
+                        clean_sheet_name = sheet_name.replace('/', '-').replace('\\', '-')[:31]
                         df.to_excel(writer, sheet_name=clean_sheet_name, index=False, startrow=0, startcol=0)
                         
                         # Get the worksheet object for image insertion
                         worksheet = writer.sheets[clean_sheet_name]
-
-                        # --- 2. PLOT 1 GENERATION (UA and Duty) ---
+                        data_end_row = len(df) + 1 # Last row of data (0-indexed + header row)
+                        
+                        
+                        # ==============================================================================
+                        # 2. PLOT 1 GENERATION (UA and Duty)
+                        # ==============================================================================
                         fig1, ax1 = plt.subplots(figsize=(14, 8))
                         fig1.suptitle(f'Sheet: {sheet_name} | Performance Curve: UA and Heat Duty vs. Mass Flow Rate', fontsize=16, fontweight='bold')
-                        # ... (Plot 1 logic: axes, labels, lines, shading, legend) ...
-                        
-                        # Setup Axes (as in previous code)
+
                         ax1.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
                         ax1.set_ylabel('Service Overall Heat Transfer Coefficient (UA) (kcal/hr.m².°C)', color=temp_colors.get(list(temp_colors.keys())[0], 'k'), fontsize=12)
                         ax1.tick_params(axis='y', labelcolor=temp_colors.get(list(temp_colors.keys())[0], 'k'))
@@ -130,47 +126,12 @@ if uploaded_file is not None:
                         ax3.set_ylabel('Heat Exchanger Duty (kcal/hr)', color=duty_color, fontsize=12)
                         ax3.tick_params(axis='y', labelcolor=duty_color)
 
-                        # Plotting Loops
                         for name, group in grouped:
-                            # UA Plot (Primary Y)
-                            ax1.plot(
-                                group['Mass Flow Rate (kg/hr)'],
-                                group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'],
-                                color=temp_colors.get(name, 'k'),
-                                linestyle='-',
-                                marker='',
-                                label=f'UA @ {name}°C'
-                            )
-                            # Shade area above Design UA
-                            ax1.fill_between(
-                                group['Mass Flow Rate (kg/hr)'],
-                                group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'],
-                                DESIGN_UA,
-                                where=(group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'] > DESIGN_UA),
-                                color='red',
-                                alpha=0.3,
-                                interpolate=True
-                            )
-                            # Duty Plot (Tertiary Y)
-                            ax3.plot(
-                                group['Mass Flow Rate (kg/hr)'],
-                                group['Heat Exchanger Duty (kcal/hr)'],
-                                color=temp_colors.get(name, 'k'),
-                                linestyle=':',
-                                marker='',
-                                linewidth=2,
-                                label=f'Duty @ {name}°C'
-                            )
-                            # Shade area above Design Duty
-                            ax3.fill_between(
-                                group['Mass Flow Rate (kg/hr)'],
-                                group['Heat Exchanger Duty (kcal/hr)'],
-                                DESIGN_DUTY,
-                                where=(group['Heat Exchanger Duty (kcal/hr)'] > DESIGN_DUTY),
-                                color='red',
-                                alpha=0.3,
-                                interpolate=True
-                            )
+                            # UA Plot (Primary Y) and Duty Plot (Tertiary Y)
+                            ax1.plot(group['Mass Flow Rate (kg/hr)'], group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', label=f'UA @ {name}°C')
+                            ax1.fill_between(group['Mass Flow Rate (kg/hr)'], group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'], DESIGN_UA, where=(group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'] > DESIGN_UA), color='red', alpha=0.3, interpolate=True)
+                            ax3.plot(group['Mass Flow Rate (kg/hr)'], group['Heat Exchanger Duty (kcal/hr)'], color=temp_colors.get(name, 'k'), linestyle=':', marker='', linewidth=2, label=f'Duty @ {name}°C')
+                            ax3.fill_between(group['Mass Flow Rate (kg/hr)'], group['Heat Exchanger Duty (kcal/hr)'], DESIGN_DUTY, where=(group['Heat Exchanger Duty (kcal/hr)'] > DESIGN_DUTY), color='red', alpha=0.3, interpolate=True)
 
                         # Design Lines
                         ax3.axhline(y=DESIGN_DUTY, color='purple', linestyle='--', linewidth=2.5, label=f'Design Duty ({DESIGN_DUTY} kcal/hr)')
@@ -188,20 +149,21 @@ if uploaded_file is not None:
                         fig1.savefig(plot1_buf, format='png', bbox_inches='tight')
                         plot1_buf.seek(0)
                         
-                        # Insert image starting at row 3 + len(df) (below the data)
-                        start_row = len(df) + 3
-                        worksheet.insert_image(f'B{start_row}', 'plot1.png', {'image_data': plot1_buf, 'x_scale': 0.7, 'y_scale': 0.7})
+                        # Start Plot 1 insertion right after the data (e.g., cell B<data_end_row + 2>)
+                        worksheet.insert_image(f'B{data_end_row + 2}', 'plot1.png', {'image_data': plot1_buf, 'x_scale': 0.7, 'y_scale': 0.7})
                         
                         # Display and close for Streamlit
                         st.pyplot(fig1)
                         plt.close(fig1)
 
-                        # --- 2. PLOT 2 GENERATION (Fan Power and TS Outlet Temp) ---
+                        
+                        # ==============================================================================
+                        # 3. PLOT 2 GENERATION (Fan Power and TS Outlet Temp)
+                        # ==============================================================================
+                        
                         fig2, ax2 = plt.subplots(figsize=(14, 8))
                         fig2.suptitle(f'Sheet: {sheet_name} | Performance Curve: Fan Power and TS Outlet Temperature vs. Mass Flow Rate', fontsize=16, fontweight='bold')
-                        # ... (Plot 2 logic: axes, labels, lines, shading, legend) ...
 
-                        # Setup Axes (as in previous code)
                         ax2.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
                         ax2.set_ylabel('Break Power/Fan (kW)', color='blue', fontsize=12)
                         ax2.tick_params(axis='y', labelcolor='blue')
@@ -212,28 +174,24 @@ if uploaded_file is not None:
                         ax4.set_ylabel('TS Outlet Temperature (Deg C)', color=temp_out_color, fontsize=12)
                         ax4.tick_params(axis='y', labelcolor=temp_out_color)
 
-                        # Plotting Loops
+                        # Plotting Fan Power and TS Outlet Temp
                         for name, group in grouped:
-                            # Summer Power (on ax2)
                             ax2.plot(group['Mass Flow Rate (kg/hr)'], group['Break Power/Fan Summer (kW)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', label=f'Summer Power @ {name}°C')
-                            # Winter Power (on ax2)
                             ax2.plot(group['Mass Flow Rate (kg/hr)'], group['Break Power/Fan Winter (kW)'], color=temp_colors.get(name, 'k'), linestyle='--', marker='', label=f'Winter Power @ {name}°C')
-                            # TS Outlet Temperature (on ax4)
                             ax4.plot(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='.', linewidth=1.5, label=f'TS Outlet Temp @ {name}°C')
-                            # Shade area above Design TS Outlet Temp (on ax4)
                             ax4.fill_between(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], DESIGN_TS_OUTLET_TEMP, where=(group['TS Outlet Temperature (Deg C)'] > DESIGN_TS_OUTLET_TEMP), color='red', alpha=0.3, interpolate=True)
 
-                        # Design Lines
+                        # Design Lines and Limits
                         ax2.axhline(y=RATED_POWER, color='k', linestyle='-.', linewidth=2.5, label=f'Rated Power ({RATED_POWER} kW)')
                         ax4.axhline(y=DESIGN_TS_OUTLET_TEMP, color=temp_out_color, linestyle='--', linewidth=2.5, label=f'Design TS Outlet Temp ({DESIGN_TS_OUTLET_TEMP} °C)')
-
-                        # Adjust AXIS limits
+                        
                         min_power = df[['Break Power/Fan Summer (kW)', 'Break Power/Fan Winter (kW)']].min().min()
                         max_power = max(df[['Break Power/Fan Summer (kW)', 'Break Power/Fan Winter (kW)']].max().max(), RATED_POWER)
                         ax2.set_ylim(min_power * 0.9, max_power * 1.1)
                         min_temp = df['TS Outlet Temperature (Deg C)'].min()
                         max_temp = max(df['TS Outlet Temperature (Deg C)'].max(), DESIGN_TS_OUTLET_TEMP)
                         ax4.set_ylim(min_temp * 0.9, max_temp * 1.1)
+
 
                         # Legend
                         lines_ax2, labels_ax2 = ax2.get_legend_handles_labels()
@@ -247,8 +205,8 @@ if uploaded_file is not None:
                         fig2.savefig(plot2_buf, format='png', bbox_inches='tight')
                         plot2_buf.seek(0)
                         
-                        # Insert image below Plot 1
-                        start_row_2 = start_row + 25 
+                        # Start Plot 2 insertion below Plot 1 (approx 25 rows down from Plot 1 start)
+                        start_row_2 = data_end_row + 27 
                         worksheet.insert_image(f'B{start_row_2}', 'plot2.png', {'image_data': plot2_buf, 'x_scale': 0.7, 'y_scale': 0.7})
 
                         # Display and close for Streamlit
@@ -257,9 +215,21 @@ if uploaded_file is not None:
                         
                         st.markdown("---") # Separator between sheet results
 
-                    # Finalize the Excel report by closing the writer
-                    # writer is closed by 'with pd.ExcelWriter...' block
-
                 except Exception as e:
                     st.error(f"An error occurred during processing or Excel generation: {str(e)}")
-                    st.write("Please check your Excel file structure
+                    st.write("Please check your Excel file structure, sheet contents, and column names.")
+                    return 
+
+            st.success("✅ Excel report compilation complete. Download below.")
+            
+            # --- FINAL DOWNLOAD BUTTON FOR EXCEL ---
+            output.seek(0)
+            st.download_button(
+                label="⬇️ Download Combined Multi-Sheet Performance Report (Excel)",
+                data=output,
+                file_name="Air_Cooler_Performance_Report_Combined.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+else:
+    st.info("Please upload an Excel file to begin the analysis.")
