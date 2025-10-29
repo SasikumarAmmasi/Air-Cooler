@@ -218,7 +218,7 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.error(f"An error occurred during processing or Excel generation: {str(e)}")
                     st.write("Please check your Excel file structure, sheet contents, and column names.")
-                    return 
+                    st.stop() 
 
             st.success("✅ Excel report compilation complete. Download below.")
             
