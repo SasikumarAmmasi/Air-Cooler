@@ -142,7 +142,7 @@ if uploaded_file is not None:
                         lines_ax3, labels_ax3 = ax3.get_legend_handles_labels()
                         unique_labels_1 = {l: h for h, l in zip(lines_ax1 + lines_ax3, labels_ax1 + labels_ax3)}
                         fig1.tight_layout(rect=[0, 0.15, 0.95, 0.98])
-                        ax1.legend(list(unique_labels_1.values()), list(unique_labels_1.keys()), loc='lower center', bbox_to_anchor=(0.5, -0.3), ncol=4, frameon=False, fontsize=9)
+                        ax1.legend(list(unique_labels_1.values()), list(unique_labels_1.keys()), loc='lower center', bbox_to_anchor=(0.5, -0.25), ncol=5, frameon=False, fontsize=9)
                         
                         # --- Insert Plot 1 into Excel ---
                         plot1_buf = io.BytesIO()
@@ -178,7 +178,7 @@ if uploaded_file is not None:
                         for name, group in grouped:
                             ax2.plot(group['Mass Flow Rate (kg/hr)'], group['Break Power/Fan Summer (kW)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', label=f'Summer Power @ {name}°C')
                             ax2.plot(group['Mass Flow Rate (kg/hr)'], group['Break Power/Fan Winter (kW)'], color=temp_colors.get(name, 'k'), linestyle='--', marker='', label=f'Winter Power @ {name}°C')
-                            ax4.plot(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='.', linewidth=1.5, label=f'TS Outlet Temp @ {name}°C')
+                            ax4.plot(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', linewidth=1.5, label=f'TS Outlet Temp @ {name}°C')
                             ax4.fill_between(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], DESIGN_TS_OUTLET_TEMP, where=(group['TS Outlet Temperature (Deg C)'] > DESIGN_TS_OUTLET_TEMP), color='red', alpha=0.3, interpolate=True)
 
                         # Design Lines and Limits
@@ -198,7 +198,7 @@ if uploaded_file is not None:
                         lines_ax4, labels_ax4 = ax4.get_legend_handles_labels()
                         unique_labels_2 = {l: h for h, l in zip(lines_ax2 + lines_ax4, labels_ax2 + labels_ax4)}
                         fig2.tight_layout(rect=[0, 0.15, 0.95, 0.98])
-                        ax2.legend(list(unique_labels_2.values()), list(unique_labels_2.keys()), loc='lower center', bbox_to_anchor=(0.5, -0.3), ncol=5, frameon=False, fontsize=8)
+                        ax2.legend(list(unique_labels_2.values()), list(unique_labels_2.keys()), loc='lower center', bbox_to_anchor=(0.5, -0.25), ncol=5, frameon=False, fontsize=8)
 
                         # --- Insert Plot 2 into Excel ---
                         plot2_buf = io.BytesIO()
