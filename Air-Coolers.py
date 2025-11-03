@@ -1,235 +1,339 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import streamlit as st
+import numpy as np
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image
 import io
-import xlsxwriter 
+from PIL import Image as PILImage
+import os
 
-# ==============================================================================
-# STREAMLIT APP CONFIGURATION
-# ==============================================================================
-st.set_page_config(page_title="Air Cooler Performance Analysis", layout="wide")
-st.title("Air Cooler Performance Curve Analysis (Multi-Sheet Report Generation)")
+def process_sheet_data(df):
+    """
+    Process a single sheet's data and return the figure and analysis results.
+    """
+    try:
+        # Data Cleaning and Column Renaming
+        df.columns = [
+            'Temperature_Inlet',
+            'Flowrate_Actual',
+            'Flowrate_PD_Limit',
+            'Flowrate_Momentum_Limit'
+        ]
 
-# ==============================================================================
-# 1. INPUT DATA AND CONSTANTS
-# ==============================================================================
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
 
-# File upload
-uploaded_file = st.file_uploader("Upload the Excel file", type=['xlsx', 'xls'])
+        df.dropna(inplace=True)
 
-if uploaded_file is not None:
-    # Get input constants from user
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        RATED_POWER = st.number_input("Rated Power (kW)", value=30.0, step=0.1)
-    
-    with col2:
-        DESIGN_DUTY = st.number_input("Design Air Cooler Duty (kcal/hr)", value=3350000.0, step=1000.0)
-    
-    with col3:
-        DESIGN_UA = st.number_input("Design UA (kcal/hr.m².°C)", value=100000.0, step=100.0)
-    
-    with col4:
-        DESIGN_TS_OUTLET_TEMP = st.number_input("Design TS Outlet Temp (°C)", value=37.0, step=0.1)
-    
-    if st.button("Generate Combined Excel Report with Plots"):
-        
-        # Buffer to hold the final Excel file
-        output = io.BytesIO()
-        
-        # Use ExcelWriter with xlsxwriter engine for image support
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            
-            # Get the workbook object for image insertion
-            workbook = writer.book
-            
-            with st.spinner("Processing data, generating plots, and compiling Excel report..."):
-                try:
-                    # Load ALL sheets into a dictionary
-                    all_sheets_data = pd.read_excel(uploaded_file, sheet_name=None)
+        # Constraint Analysis
+        df['Flowrate_Constraint_Min'] = df[['Flowrate_Actual', 'Flowrate_PD_Limit', 'Flowrate_Momentum_Limit']].min(axis=1)
 
-                    # --- Color/Style Maps (Defined once) ---
-                    temp_colors = {
-                        50.0: '#1f77b4',  # Blue
-                        55.0: '#ff7f0e',  # Orange
-                        60.0: '#2ca02c',  # Green
-                        65.0: '#d62728',  # Red
-                        70.0: '#9467bd',  # Purple
-                        75.0: '#8c564b'   # Brown
-                    }
-                    
-                    # --------------------------------------------------------------------------
-                    # 🔁 Iterate over each sheet
-                    # --------------------------------------------------------------------------
-                    for sheet_name, df in all_sheets_data.items():
-                        st.header(f"Processing Sheet: **{sheet_name}**")
-                        
-                        # --- Data Cleaning and Standardization (same as prior correct code) ---
-                        df.columns = df.columns.str.strip()
+        active_constraints = np.argmin(df[['Flowrate_Actual', 'Flowrate_PD_Limit', 'Flowrate_Momentum_Limit']].values, axis=1)
+        constraint_names = ['Actual Flowrate', 'Pressure Drop (PD)', 'Momentum']
+        df['Active_Constraint'] = [constraint_names[i] for i in active_constraints]
 
-                        df = df.rename(columns={
-                            'TS Gas Mass Flow (kg/h)': 'Mass Flow Rate (kg/hr)',
-                            'TS Inlet Temperature (Deg C)': 'TS Inlet Temp (Deg C)',
-                            'UA (kcal/hr.m².°C)': 'Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)',
-                            'HE Duty (kcal/h)': 'Heat Exchanger Duty (kcal/hr)',
-                            'Brake Power/Fan, Summer (kW)': 'Break Power/Fan Summer (kW)',
-                            'Brake Power/Fan, Winter (kW)': 'Break Power/Fan Winter (kW)',
-                            'TS Outlet Temperature (Deg C)': 'TS Outlet Temperature (Deg C)',
-                            'Air Mass Flow (kg/h)': 'Air Mass Flow (kg/h)'
-                        })
+        crossover_rows = df[df['Active_Constraint'] != df['Active_Constraint'].shift(1)]
 
-                        cols_to_convert = [
-                            'Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)',
-                            'Heat Exchanger Duty (kcal/hr)',
-                            'Break Power/Fan Summer (kW)',
-                            'Break Power/Fan Winter (kW)',
-                            'TS Outlet Temperature (Deg C)'
-                        ]
-                        for col in cols_to_convert:
-                            if col in df.columns:
-                                df[col] = pd.to_numeric(df[col], errors='coerce')
+        analysis_text = ""
+        if len(crossover_rows) > 1:
+            shift_data = crossover_rows.iloc[1]
+            shift_temp = shift_data['Temperature_Inlet']
+            shift_flow = shift_data['Flowrate_Constraint_Min']
+            shift_to = shift_data['Active_Constraint']
 
-                        df.dropna(subset=['Mass Flow Rate (kg/hr)', 'TS Inlet Temp (Deg C)', 'Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)', 'Heat Exchanger Duty (kcal/hr)', 'TS Outlet Temperature (Deg C)'], inplace=True)
-                        
-                        if df.empty:
-                            st.warning(f"Sheet '{sheet_name}' is empty or contains no valid data after cleaning. Skipping plots for this sheet.")
-                            st.markdown("---")
-                            continue
+            analysis_text = (
+                f"Constraint Shift Analysis:\n"
+                f"Limiting curve switches at Inlet Temperature: {shift_temp:.1f} °C\n"
+                f"Flowrate limit at shift: {shift_flow:.0f} kg/hr\n"
+                f"New limiting curve: {shift_to}"
+            )
+        else:
+            shift_temp, shift_flow = None, None
+            analysis_text = "Note: The overall limiting curve does not switch within the provided temperature range."
 
-                        df['Heat Exchanger Duty (kcal/hr)'] = df['Heat Exchanger Duty (kcal/hr)'].abs()
-                        grouped = df.groupby('TS Inlet Temp (Deg C)')
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(14, 8))
 
-                        # --- Write Data to Excel ---
-                        # Use a clean sheet name (Excel sheet names are limited to 31 chars)
-                        clean_sheet_name = sheet_name.replace('/', '-').replace('\\', '-')[:31]
-                        df.to_excel(writer, sheet_name=clean_sheet_name, index=False, startrow=0, startcol=0)
-                        
-                        # Get the worksheet object for image insertion
-                        worksheet = writer.sheets[clean_sheet_name]
-                        data_end_row = len(df) + 1 # Last row of data (0-indexed + header row)
-                        
-                        
-                        # ==============================================================================
-                        # 2. PLOT 1 GENERATION (UA and Duty)
-                        # ==============================================================================
-                        fig1, ax1 = plt.subplots(figsize=(14, 8))
-                        fig1.suptitle(f'Sheet: {sheet_name} | Performance Curve: UA and Heat Duty vs. Mass Flow Rate', fontsize=16, fontweight='bold')
+        # Plot lines
+        ax.plot(
+            df['Temperature_Inlet'],
+            df['Flowrate_Actual'],
+            label='Area Ratio',
+            color='#FF00FF',
+            linestyle='-',
+            linewidth=3
+        )
 
-                        ax1.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
-                        ax1.set_ylabel('Service Overall Heat Transfer Coefficient (UA) (kcal/hr.m².°C)', color=temp_colors.get(list(temp_colors.keys())[0], 'k'), fontsize=12)
-                        ax1.tick_params(axis='y', labelcolor=temp_colors.get(list(temp_colors.keys())[0], 'k'))
+        ax.plot(
+            df['Temperature_Inlet'],
+            df['Flowrate_PD_Limit'],
+            label='Allowable Pressure Drop Limit (0.7 bar)',
+            color='red',
+            linestyle='-',
+            linewidth=2.5
+        )
 
-                        ax3 = ax1.twinx()
-                        duty_color = 'green'
-                        ax3.spines['right'].set_color(duty_color)
-                        ax3.set_ylabel('Heat Exchanger Duty (kcal/hr)', color=duty_color, fontsize=12)
-                        ax3.tick_params(axis='y', labelcolor=duty_color)
+        ax.plot(
+            df['Temperature_Inlet'],
+            df['Flowrate_Momentum_Limit'],
+            label=r'Inlet Nozzle Momentum Limit ($7000-\rho v^2$)',
+            color='#228B22',
+            linestyle='-.',
+            linewidth=2.5
+        )
 
-                        for name, group in grouped:
-                            # UA Plot (Primary Y) and Duty Plot (Tertiary Y)
-                            ax1.plot(group['Mass Flow Rate (kg/hr)'], group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', label=f'UA @ {name}°C')
-                            ax1.fill_between(group['Mass Flow Rate (kg/hr)'], group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'], DESIGN_UA, where=(group['Overall Heat Transfer Co-efficient (UA) (kcal/hr.m².°C)'] > DESIGN_UA), color='red', alpha=0.3, interpolate=True)
-                            ax3.plot(group['Mass Flow Rate (kg/hr)'], group['Heat Exchanger Duty (kcal/hr)'], color=temp_colors.get(name, 'k'), linestyle=':', marker='', linewidth=2, label=f'Duty @ {name}°C')
-                            ax3.fill_between(group['Mass Flow Rate (kg/hr)'], group['Heat Exchanger Duty (kcal/hr)'], DESIGN_DUTY, where=(group['Heat Exchanger Duty (kcal/hr)'] > DESIGN_DUTY), color='red', alpha=0.3, interpolate=True)
+        # Fill safe operating zone
+        ax.fill_between(
+            df['Temperature_Inlet'],
+            0,
+            df['Flowrate_Constraint_Min'],
+            color='#87CEFA',
+            alpha=0.8,
+            label='Safe Operating Zone (Below All Curves)'
+        )
 
-                        # Design Lines
-                        ax3.axhline(y=DESIGN_DUTY, color='purple', linestyle='--', linewidth=2.5, label=f'Design Duty ({DESIGN_DUTY} kcal/hr)')
-                        ax1.axhline(y=DESIGN_UA, color='darkorange', linestyle='-.', linewidth=2.5, label=f'Design UA ({DESIGN_UA} kcal/hr.m².°C)')
-
-                        # Legend
-                        lines_ax1, labels_ax1 = ax1.get_legend_handles_labels()
-                        lines_ax3, labels_ax3 = ax3.get_legend_handles_labels()
-                        unique_labels_1 = {l: h for h, l in zip(lines_ax1 + lines_ax3, labels_ax1 + labels_ax3)}
-                        fig1.tight_layout(rect=[0, 0.15, 0.95, 0.98])
-                        ax1.legend(list(unique_labels_1.values()), list(unique_labels_1.keys()), loc='lower center', bbox_to_anchor=(0.5, -0.25), ncol=5, frameon=False, fontsize=9)
-                        
-                        # --- Insert Plot 1 into Excel ---
-                        plot1_buf = io.BytesIO()
-                        fig1.savefig(plot1_buf, format='png', bbox_inches='tight')
-                        plot1_buf.seek(0)
-                        
-                        # Start Plot 1 insertion right after the data (e.g., cell B<data_end_row + 2>)
-                        worksheet.insert_image(f'B{data_end_row + 2}', 'plot1.png', {'image_data': plot1_buf, 'x_scale': 0.7, 'y_scale': 0.7})
-                        
-                        # Display and close for Streamlit
-                        st.pyplot(fig1)
-                        plt.close(fig1)
-
-                        
-                        # ==============================================================================
-                        # 3. PLOT 2 GENERATION (Fan Power and TS Outlet Temp)
-                        # ==============================================================================
-                        
-                        fig2, ax2 = plt.subplots(figsize=(14, 8))
-                        fig2.suptitle(f'Sheet: {sheet_name} | Performance Curve: Fan Power and TS Outlet Temperature vs. Mass Flow Rate', fontsize=16, fontweight='bold')
-
-                        ax2.set_xlabel('Mass Flow Rate (kg/hr)', fontsize=12)
-                        ax2.set_ylabel('Break Power/Fan (kW)', color='blue', fontsize=12)
-                        ax2.tick_params(axis='y', labelcolor='blue')
-
-                        ax4 = ax2.twinx()
-                        temp_out_color = '#d62728'
-                        ax4.spines['right'].set_color(temp_out_color)
-                        ax4.set_ylabel('TS Outlet Temperature (Deg C)', color=temp_out_color, fontsize=12)
-                        ax4.tick_params(axis='y', labelcolor=temp_out_color)
-
-                        # Plotting Fan Power and TS Outlet Temp
-                        for name, group in grouped:
-                            ax2.plot(group['Mass Flow Rate (kg/hr)'], group['Break Power/Fan Summer (kW)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', label=f'Summer Power @ {name}°C')
-                            ax2.plot(group['Mass Flow Rate (kg/hr)'], group['Break Power/Fan Winter (kW)'], color=temp_colors.get(name, 'k'), linestyle='--', marker='', label=f'Winter Power @ {name}°C')
-                            ax4.plot(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], color=temp_colors.get(name, 'k'), linestyle='-', marker='', linewidth=1.5, label=f'TS Outlet Temp @ {name}°C')
-                            ax4.fill_between(group['Mass Flow Rate (kg/hr)'], group['TS Outlet Temperature (Deg C)'], DESIGN_TS_OUTLET_TEMP, where=(group['TS Outlet Temperature (Deg C)'] > DESIGN_TS_OUTLET_TEMP), color='red', alpha=0.3, interpolate=True)
-
-                        # Design Lines and Limits
-                        ax2.axhline(y=RATED_POWER, color='k', linestyle='-.', linewidth=2.5, label=f'Rated Power ({RATED_POWER} kW)')
-                        ax4.axhline(y=DESIGN_TS_OUTLET_TEMP, color=temp_out_color, linestyle='--', linewidth=2.5, label=f'Design TS Outlet Temp ({DESIGN_TS_OUTLET_TEMP} °C)')
-                        
-                        min_power = df[['Break Power/Fan Summer (kW)', 'Break Power/Fan Winter (kW)']].min().min()
-                        max_power = max(df[['Break Power/Fan Summer (kW)', 'Break Power/Fan Winter (kW)']].max().max(), RATED_POWER)
-                        ax2.set_ylim(min_power * 0.9, max_power * 1.1)
-                        min_temp = df['TS Outlet Temperature (Deg C)'].min()
-                        max_temp = max(df['TS Outlet Temperature (Deg C)'].max(), DESIGN_TS_OUTLET_TEMP)
-                        ax4.set_ylim(min_temp * 0.9, max_temp * 1.1)
-
-
-                        # Legend
-                        lines_ax2, labels_ax2 = ax2.get_legend_handles_labels()
-                        lines_ax4, labels_ax4 = ax4.get_legend_handles_labels()
-                        unique_labels_2 = {l: h for h, l in zip(lines_ax2 + lines_ax4, labels_ax2 + labels_ax4)}
-                        fig2.tight_layout(rect=[0, 0.15, 0.95, 0.98])
-                        ax2.legend(list(unique_labels_2.values()), list(unique_labels_2.keys()), loc='lower center', bbox_to_anchor=(0.5, -0.25), ncol=5, frameon=False, fontsize=8)
-
-                        # --- Insert Plot 2 into Excel ---
-                        plot2_buf = io.BytesIO()
-                        fig2.savefig(plot2_buf, format='png', bbox_inches='tight')
-                        plot2_buf.seek(0)
-                        
-                        # Start Plot 2 insertion below Plot 1 (approx 25 rows down from Plot 1 start)
-                        start_row_2 = data_end_row + 27 
-                        worksheet.insert_image(f'B{start_row_2}', 'plot2.png', {'image_data': plot2_buf, 'x_scale': 0.7, 'y_scale': 0.7})
-
-                        # Display and close for Streamlit
-                        st.pyplot(fig2)
-                        plt.close(fig2)
-                        
-                        st.markdown("---") # Separator between sheet results
-
-                except Exception as e:
-                    st.error(f"An error occurred during processing or Excel generation: {str(e)}")
-                    st.write("Please check your Excel file structure, sheet contents, and column names.")
-                    st.stop() 
-
-            st.success("✅ Excel report compilation complete. Download below.")
-            
-            # --- FINAL DOWNLOAD BUTTON FOR EXCEL ---
-            output.seek(0)
-            st.download_button(
-                label="⬇️ Download Combined Multi-Sheet Performance Report (Excel)",
-                data=output,
-                file_name="Air_Cooler_Performance_Report_Combined.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        # Annotate shift point
+        if shift_temp and shift_flow:
+            ax.scatter(
+                shift_temp, shift_flow,
+                color='black',
+                marker='x',
+                s=200,
+                zorder=5,
+                label='Limiting Curve Shift Point'
+            )
+            ax.annotate(
+                f'Limiting Curve Shifts to {shift_to}\n@ {shift_temp:.1f}°C',
+                xy=(shift_temp, shift_flow),
+                xytext=(shift_temp + 5, shift_flow + 5000),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
+                fontsize=10,
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8)
             )
 
-else:
-    st.info("Please upload an Excel file to begin the analysis.")
+        # Plot aesthetics
+        ax.set_title('ACHE Operating Envelope: Tube Side Mass Flowrate vs. Inlet Temperature',
+                     fontsize=18, fontweight='bold')
+        ax.set_xlabel('Tube Side Inlet Temperature (°C)', fontsize=14)
+        ax.set_ylabel('Tube Side Mass Flowrate (kg/hr)', fontsize=14)
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.legend(loc='upper right', fontsize=10)
+        ax.set_ylim(bottom=0)
+
+        plt.tight_layout()
+
+        return fig, analysis_text
+
+    except Exception as e:
+        print(f"Error processing sheet: {e}")
+        return None, f"Error: {str(e)}"
+
+
+def process_excel_workbook(input_file, output_file=None):
+    """
+    Read all worksheets from an Excel file, generate plots, and save them back to Excel.
+
+    Parameters:
+    -----------
+    input_file : str
+        Path to the input Excel file containing data in multiple sheets
+    output_file : str, optional
+        Path to the output Excel file. If None, will create a file with '_output' suffix
+    """
+    
+    # Fix the file extension if it's malformed
+    # Get the base name without extension
+    base_name = os.path.splitext(input_file)[0]
+    
+    # If file doesn't end with .xlsx or .xls, try to fix it
+    if not (input_file.endswith('.xlsx') or input_file.endswith('.xls')):
+        print(f"⚠️  Warning: File has unusual extension. Attempting to fix...")
+        # Try to rename the file to .xlsx
+        corrected_file = base_name + '.xlsx'
+        try:
+            os.rename(input_file, corrected_file)
+            input_file = corrected_file
+            print(f"✓ File renamed to: {corrected_file}")
+        except Exception as e:
+            print(f"✗ Could not rename file: {e}")
+            print(f"Attempting to process anyway...")
+
+    if output_file is None:
+        # More robust handling of output filename
+        if input_file.endswith('.xlsx'):
+            output_file = input_file.replace('.xlsx', '_output.xlsx')
+        elif input_file.endswith('.xls'):
+            output_file = input_file.replace('.xls', '_output.xlsx')
+        else:
+            # Fallback for any other extension
+            output_file = base_name + '_output.xlsx'
+
+    try:
+        # Read all sheets from the Excel file
+        excel_file = pd.ExcelFile(input_file)
+        sheet_names = excel_file.sheet_names
+
+        print(f"\n{'='*70}")
+        print(f"Processing {len(sheet_names)} sheet(s) from: {input_file}")
+        print(f"{'='*70}\n")
+
+        # Create a new Excel writer
+        with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+
+            for sheet_name in sheet_names:
+                print(f"Processing sheet: '{sheet_name}'...")
+
+                # Read the sheet
+                df = pd.read_excel(input_file, sheet_name=sheet_name)
+
+                # Process the data and create plot
+                fig, analysis_text = process_sheet_data(df)
+
+                if fig is not None:
+                    # Save the original data to the output workbook
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+                    # Save the plot as an image in memory
+                    img_buffer = io.BytesIO()
+                    fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+                    img_buffer.seek(0)
+                    plt.close(fig)
+
+                    # Get the worksheet
+                    worksheet = writer.sheets[sheet_name]
+
+                    # Add the analysis text below the data
+                    start_row = len(df) + 3
+                    worksheet.cell(row=start_row, column=1, value="Analysis Results:")
+                    for i, line in enumerate(analysis_text.split('\n')):
+                        worksheet.cell(row=start_row + i + 1, column=1, value=line)
+
+                    # Insert the plot image
+                    img = Image(img_buffer)
+                    # Position the image to the right of the data
+                    img.anchor = f'F2'
+                    worksheet.add_image(img)
+
+                    print(f"  ✓ Successfully processed '{sheet_name}'")
+                    print(f"  {analysis_text.split(chr(10))[0]}\n")
+                else:
+                    print(f"  ✗ Failed to process '{sheet_name}'\n")
+
+        print(f"{'='*70}")
+        print(f"✓ All sheets processed successfully!")
+        print(f"Output saved to: {output_file}")
+        print(f"{'='*70}\n")
+
+        return output_file
+
+    except Exception as e:
+        print(f"\n✗ Error processing workbook: {e}")
+        print(f"\n💡 Troubleshooting tips:")
+        print(f"  1. Make sure the file is a valid Excel file (.xlsx or .xls)")
+        print(f"  2. Check that the file is not corrupted")
+        print(f"  3. Verify the file extension is correct")
+        print(f"  4. Try opening the file in Excel and saving it again")
+        raise
+
+
+# ==============================================================================
+# AUTO-EXECUTE WITH FILE UPLOAD
+# ==============================================================================
+
+print("\n" + "🚀 "*35)
+print(" "*20 + "ACHE OPERATING ENVELOPE ANALYZER")
+print("🚀 "*35 + "\n")
+
+# Try Google Colab upload first
+try:
+    from google.colab import files
+    print("="*70)
+    print("📤 GOOGLE COLAB DETECTED")
+    print("="*70)
+    print("Please click 'Choose Files' below to upload your Excel file...")
+    print("(File should contain multiple worksheets with ACHE data)")
+    print("="*70 + "\n")
+
+    uploaded = files.upload()
+
+    if uploaded:
+        filename = list(uploaded.keys())[0]
+        print(f"\n✅ File '{filename}' uploaded successfully!\n")
+
+        # Process the file
+        output_file = process_excel_workbook(filename)
+
+        # Download the result
+        print("\n📥 Preparing download...")
+        files.download(output_file)
+        print("✅ Complete! Check your downloads folder.")
+
+except ImportError:
+    # Not in Colab, try Jupyter with ipywidgets
+    try:
+        import ipywidgets as widgets
+        from IPython.display import display, clear_output
+
+        print("="*70)
+        print("📤 JUPYTER NOTEBOOK DETECTED")
+        print("="*70)
+        print("Click 'Upload' button below to select your Excel file...")
+        print("="*70 + "\n")
+
+        uploader = widgets.FileUpload(
+            accept='.xlsx,.xls',
+            multiple=False,
+            description='📁 Upload Excel',
+            button_style='success',
+            icon='upload'
+        )
+
+        output_area = widgets.Output()
+
+        def on_upload(change):
+            with output_area:
+                clear_output()
+                if uploader.value:
+                    uploaded_file = list(uploader.value.values())[0]
+                    filename = list(uploader.value.keys())[0]
+
+                    # Save the uploaded file
+                    with open(filename, 'wb') as f:
+                        f.write(uploaded_file['content'])
+
+                    print(f"\n✅ File '{filename}' uploaded successfully!\n")
+
+                    # Process the file
+                    output_file = process_excel_workbook(filename)
+
+                    print(f"\n✅ Processing complete!")
+                    print(f"📥 Output file: {output_file}")
+                    print(f"\nYou can download it from the file browser on the left →")
+
+        uploader.observe(on_upload, names='value')
+
+        # Display the upload widget
+        display(widgets.VBox([
+            widgets.HTML("<h3>📊 Upload Your Excel File</h3>"),
+            uploader,
+            output_area
+        ]))
+
+    except ImportError:
+        # No interactive widgets available
+        print("="*70)
+        print("⚠️  INTERACTIVE UPLOAD NOT AVAILABLE")
+        print("="*70)
+        print("\n📋 Your platform doesn't support automatic file upload.")
+        print("\nPlease follow these steps:\n")
+        print("STEP 1: Upload your Excel file manually")
+        print("  - Use the file browser/upload button in your environment")
+        print("  - Or place the file in the same directory as this script\n")
+        print("STEP 2: Run the following command:")
+        print("  process_excel_workbook('your_filename.xlsx')\n")
+        print("Example:")
+        print("  process_excel_workbook('ACHE_Data.xlsx')\n")
+        print("="*70)
+        print("\n💡 TIP: In most platforms, you can drag & drop files into the")
+        print("file browser panel to upload them.\n")
+        print("="*70 + "\n")
