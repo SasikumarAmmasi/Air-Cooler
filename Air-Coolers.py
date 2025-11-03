@@ -5,7 +5,7 @@ from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
 import io
 from PIL import Image as PILImage
-import os
+import os 
 
 def process_sheet_data(df):
     """
