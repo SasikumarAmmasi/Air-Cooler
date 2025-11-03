@@ -5,7 +5,9 @@ from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
 import io
 from PIL import Image as PILImage
-import os 
+import os
+import streamlit as st
+import tempfile
 
 def process_sheet_data(df):
     """
@@ -125,7 +127,6 @@ def process_sheet_data(df):
         return fig, analysis_text
 
     except Exception as e:
-        print(f"Error processing sheet: {e}")
         return None, f"Error: {str(e)}"
 
 
@@ -142,30 +143,25 @@ def process_excel_workbook(input_file, output_file=None):
     """
     
     # Fix the file extension if it's malformed
-    # Get the base name without extension
     base_name = os.path.splitext(input_file)[0]
     
     # If file doesn't end with .xlsx or .xls, try to fix it
     if not (input_file.endswith('.xlsx') or input_file.endswith('.xls')):
-        print(f"⚠️  Warning: File has unusual extension. Attempting to fix...")
-        # Try to rename the file to .xlsx
+        st.warning("⚠️ File has unusual extension. Attempting to fix...")
         corrected_file = base_name + '.xlsx'
         try:
             os.rename(input_file, corrected_file)
             input_file = corrected_file
-            print(f"✓ File renamed to: {corrected_file}")
+            st.success(f"✓ File renamed to: {corrected_file}")
         except Exception as e:
-            print(f"✗ Could not rename file: {e}")
-            print(f"Attempting to process anyway...")
+            st.warning("Could not rename file. Attempting to process anyway...")
 
     if output_file is None:
-        # More robust handling of output filename
         if input_file.endswith('.xlsx'):
             output_file = input_file.replace('.xlsx', '_output.xlsx')
         elif input_file.endswith('.xls'):
             output_file = input_file.replace('.xls', '_output.xlsx')
         else:
-            # Fallback for any other extension
             output_file = base_name + '_output.xlsx'
 
     try:
@@ -173,167 +169,251 @@ def process_excel_workbook(input_file, output_file=None):
         excel_file = pd.ExcelFile(input_file)
         sheet_names = excel_file.sheet_names
 
-        print(f"\n{'='*70}")
-        print(f"Processing {len(sheet_names)} sheet(s) from: {input_file}")
-        print(f"{'='*70}\n")
+        st.info(f"📊 Processing {len(sheet_names)} sheet(s) from the uploaded file...")
 
         # Create a new Excel writer
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
 
             for sheet_name in sheet_names:
-                print(f"Processing sheet: '{sheet_name}'...")
+                with st.spinner(f"Processing sheet: '{sheet_name}'..."):
+                    # Read the sheet
+                    df = pd.read_excel(input_file, sheet_name=sheet_name)
 
-                # Read the sheet
-                df = pd.read_excel(input_file, sheet_name=sheet_name)
+                    # Process the data and create plot
+                    fig, analysis_text = process_sheet_data(df)
 
-                # Process the data and create plot
-                fig, analysis_text = process_sheet_data(df)
+                    if fig is not None:
+                        # Save the original data to the output workbook
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-                if fig is not None:
-                    # Save the original data to the output workbook
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        # Save the plot as an image in memory
+                        img_buffer = io.BytesIO()
+                        fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+                        img_buffer.seek(0)
 
-                    # Save the plot as an image in memory
-                    img_buffer = io.BytesIO()
-                    fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-                    img_buffer.seek(0)
-                    plt.close(fig)
+                        # Get the worksheet
+                        worksheet = writer.sheets[sheet_name]
 
-                    # Get the worksheet
-                    worksheet = writer.sheets[sheet_name]
+                        # Add the analysis text below the data
+                        start_row = len(df) + 3
+                        worksheet.cell(row=start_row, column=1, value="Analysis Results:")
+                        for i, line in enumerate(analysis_text.split('\n')):
+                            worksheet.cell(row=start_row + i + 1, column=1, value=line)
 
-                    # Add the analysis text below the data
-                    start_row = len(df) + 3
-                    worksheet.cell(row=start_row, column=1, value="Analysis Results:")
-                    for i, line in enumerate(analysis_text.split('\n')):
-                        worksheet.cell(row=start_row + i + 1, column=1, value=line)
+                        # Insert the plot image
+                        img = Image(img_buffer)
+                        img.anchor = 'F2'
+                        worksheet.add_image(img)
 
-                    # Insert the plot image
-                    img = Image(img_buffer)
-                    # Position the image to the right of the data
-                    img.anchor = f'F2'
-                    worksheet.add_image(img)
+                        # Display in Streamlit
+                        st.success(f"✓ Successfully processed '{sheet_name}'")
+                        
+                        # Create columns for better layout
+                        col1, col2 = st.columns([2, 1])
+                        
+                        with col1:
+                            st.pyplot(fig)
+                        
+                        with col2:
+                            st.info("📈 Analysis Results")
+                            st.text(analysis_text)
+                        
+                        plt.close(fig)
+                        st.markdown("---")
+                    else:
+                        st.error(f"✗ Failed to process '{sheet_name}'")
+                        st.text(analysis_text)
 
-                    print(f"  ✓ Successfully processed '{sheet_name}'")
-                    print(f"  {analysis_text.split(chr(10))[0]}\n")
-                else:
-                    print(f"  ✗ Failed to process '{sheet_name}'\n")
-
-        print(f"{'='*70}")
-        print(f"✓ All sheets processed successfully!")
-        print(f"Output saved to: {output_file}")
-        print(f"{'='*70}\n")
-
+        st.success("🎉 All sheets processed successfully!")
         return output_file
 
     except Exception as e:
-        print(f"\n✗ Error processing workbook: {e}")
-        print(f"\n💡 Troubleshooting tips:")
-        print(f"  1. Make sure the file is a valid Excel file (.xlsx or .xls)")
-        print(f"  2. Check that the file is not corrupted")
-        print(f"  3. Verify the file extension is correct")
-        print(f"  4. Try opening the file in Excel and saving it again")
+        st.error(f"❌ Error processing workbook: {e}")
+        with st.expander("💡 Troubleshooting Tips"):
+            st.markdown("""
+            1. Make sure the file is a valid Excel file (.xlsx or .xls)
+            2. Check that the file is not corrupted
+            3. Verify the file extension is correct
+            4. Try opening the file in Excel and saving it again
+            5. Ensure the file has the correct column structure
+            """)
         raise
 
 
 # ==============================================================================
-# AUTO-EXECUTE WITH FILE UPLOAD
+# STREAMLIT APP
 # ==============================================================================
 
-print("\n" + "🚀 "*35)
-print(" "*20 + "ACHE OPERATING ENVELOPE ANALYZER")
-print("🚀 "*35 + "\n")
+# Page configuration
+st.set_page_config(
+    page_title="ACHE Operating Envelope Analyzer",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Try Google Colab upload first
-try:
-    from google.colab import files
-    print("="*70)
-    print("📤 GOOGLE COLAB DETECTED")
-    print("="*70)
-    print("Please click 'Choose Files' below to upload your Excel file...")
-    print("(File should contain multiple worksheets with ACHE data)")
-    print("="*70 + "\n")
+# Custom CSS for better styling
+st.markdown("""
+    <style>
+    .main {
+        padding: 2rem;
+    }
+    .stButton>button {
+        width: 100%;
+        background-color: #4CAF50;
+        color: white;
+        font-weight: bold;
+        padding: 0.75rem;
+        border-radius: 8px;
+    }
+    .stButton>button:hover {
+        background-color: #45a049;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    uploaded = files.upload()
+# Sidebar
+with st.sidebar:
+    st.image("https://img.icons8.com/fluency/96/000000/heat-exchanger.png", width=100)
+    st.title("📋 About")
+    st.markdown("""
+    ### ACHE Analyzer
+    
+    This tool analyzes Air Cooled Heat Exchanger (ACHE) operating data.
+    
+    **Features:**
+    - Multi-sheet processing
+    - Constraint analysis
+    - Safe zone visualization
+    - Automated reporting
+    
+    **Version:** 1.0  
+    **Updated:** 2025
+    """)
 
-    if uploaded:
-        filename = list(uploaded.keys())[0]
-        print(f"\n✅ File '{filename}' uploaded successfully!\n")
+# Main content
+st.title("🚀 ACHE Operating Envelope Analyzer")
+st.markdown("### Automated Analysis Tool for Air Cooled Heat Exchangers")
+st.markdown("---")
 
-        # Process the file
-        output_file = process_excel_workbook(filename)
+# Instructions in an expander
+with st.expander("📖 Instructions - Click to expand", expanded=True):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        #### 📥 Upload Requirements
+        - File format: `.xlsx` or `.xls`
+        - Multiple worksheets supported
+        - Each sheet should contain ACHE data
+        
+        #### 📊 Expected Columns
+        1. Tube Side Inlet Temperature
+        2. Tube Side Mass Flowrate
+        3. Tube Side Pressure Drop Limit
+        4. Inlet Nozzle Momentum Limit
+        """)
+    
+    with col2:
+        st.markdown("""
+        #### 🔄 How to Use
+        1. Upload your Excel file below
+        2. Click **Process File** button
+        3. Review plots and analysis
+        4. Download the output file
+        
+        #### 📈 Output Includes
+        - Operating envelope plots
+        - Constraint shift analysis
+        - Safe operating zones
+        - Excel file with embedded plots
+        """)
 
-        # Download the result
-        print("\n📥 Preparing download...")
-        files.download(output_file)
-        print("✅ Complete! Check your downloads folder.")
+st.markdown("---")
 
-except ImportError:
-    # Not in Colab, try Jupyter with ipywidgets
-    try:
-        import ipywidgets as widgets
-        from IPython.display import display, clear_output
+# File uploader section
+st.markdown("### 📁 Upload Your Excel File")
+uploaded_file = st.file_uploader(
+    "Choose an Excel file",
+    type=['xlsx', 'xls'],
+    help="Upload an Excel file containing ACHE data in multiple worksheets"
+)
 
-        print("="*70)
-        print("📤 JUPYTER NOTEBOOK DETECTED")
-        print("="*70)
-        print("Click 'Upload' button below to select your Excel file...")
-        print("="*70 + "\n")
+if uploaded_file is not None:
+    # Display file details in a nice format
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("File Name", uploaded_file.name)
+    with col2:
+        st.metric("File Size", f"{uploaded_file.size / 1024:.2f} KB")
+    with col3:
+        st.metric("File Type", uploaded_file.type.split('.')[-1].upper())
+    
+    st.markdown("---")
+    
+    # Create a temporary file to save the uploaded file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        tmp_file.write(uploaded_file.getvalue())
+        tmp_file_path = tmp_file.name
 
-        uploader = widgets.FileUpload(
-            accept='.xlsx,.xls',
-            multiple=False,
-            description='📁 Upload Excel',
-            button_style='success',
-            icon='upload'
-        )
+    # Process button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        process_button = st.button("🔄 Process File", type="primary", use_container_width=True)
+    
+    if process_button:
+        try:
+            # Process the file
+            output_file = process_excel_workbook(tmp_file_path)
+            
+            # Read the output file for download
+            with open(output_file, 'rb') as f:
+                output_data = f.read()
+            
+            # Success message and download section
+            st.markdown("---")
+            st.success("### 🎉 Processing Complete!")
+            
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.download_button(
+                    label="📥 Download Output Excel File",
+                    data=output_data,
+                    file_name=f"{os.path.splitext(uploaded_file.name)[0]}_output.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            
+            # Clean up temporary files
+            os.unlink(tmp_file_path)
+            os.unlink(output_file)
+            
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
+            # Clean up temporary file on error
+            if os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
 
-        output_area = widgets.Output()
+else:
+    # Show placeholder when no file is uploaded
+    st.info("👆 Please upload an Excel file to begin analysis")
+    
+    # Sample data format
+    with st.expander("💡 View Sample Data Format"):
+        sample_df = pd.DataFrame({
+            'Tube Side Inlet Temperature': [122.2, 126.7, 131.1],
+            'Tube side Mass Flowrate': [148000, 133000, 121000],
+            'Tube side Pressure Drop limit (0.7 bar)': [74105, 73820, 73547],
+            'Inlet Nozzle Momentum (7000 pv²)': [117000, 116000, 114000]
+        })
+        st.dataframe(sample_df, use_container_width=True)
 
-        def on_upload(change):
-            with output_area:
-                clear_output()
-                if uploader.value:
-                    uploaded_file = list(uploader.value.values())[0]
-                    filename = list(uploader.value.keys())[0]
-
-                    # Save the uploaded file
-                    with open(filename, 'wb') as f:
-                        f.write(uploaded_file['content'])
-
-                    print(f"\n✅ File '{filename}' uploaded successfully!\n")
-
-                    # Process the file
-                    output_file = process_excel_workbook(filename)
-
-                    print(f"\n✅ Processing complete!")
-                    print(f"📥 Output file: {output_file}")
-                    print(f"\nYou can download it from the file browser on the left →")
-
-        uploader.observe(on_upload, names='value')
-
-        # Display the upload widget
-        display(widgets.VBox([
-            widgets.HTML("<h3>📊 Upload Your Excel File</h3>"),
-            uploader,
-            output_area
-        ]))
-
-    except ImportError:
-        # No interactive widgets available
-        print("="*70)
-        print("⚠️  INTERACTIVE UPLOAD NOT AVAILABLE")
-        print("="*70)
-        print("\n📋 Your platform doesn't support automatic file upload.")
-        print("\nPlease follow these steps:\n")
-        print("STEP 1: Upload your Excel file manually")
-        print("  - Use the file browser/upload button in your environment")
-        print("  - Or place the file in the same directory as this script\n")
-        print("STEP 2: Run the following command:")
-        print("  process_excel_workbook('your_filename.xlsx')\n")
-        print("Example:")
-        print("  process_excel_workbook('ACHE_Data.xlsx')\n")
-        print("="*70)
-        print("\n💡 TIP: In most platforms, you can drag & drop files into the")
-        print("file browser panel to upload them.\n")
-        print("="*70 + "\n")
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666;'>
+    <p>🚀 ACHE Operating Envelope Analyzer | Built with Streamlit</p>
+    <p style='font-size: 0.8em;'>For support or questions, contact your system administrator</p>
+</div>
+""", unsafe_allow_html=True)
