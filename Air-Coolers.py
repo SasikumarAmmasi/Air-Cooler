@@ -124,8 +124,8 @@ def process_sheet_data(df, sheet_name="ACHE"):
             df['Temperature_Inlet'],
             0,
             df['Flowrate_Constraint_Min'],
-            color='#87CEFA',
-            alpha=0.8,
+            color='#4DF04D',
+            alpha=0.6,
             label='Safe Operating Zone (Below All Curves)'
         )
 
