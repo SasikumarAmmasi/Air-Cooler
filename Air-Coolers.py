@@ -132,6 +132,10 @@ def process_sheet_data(df, sheet_name="ACHE"):
         # Plot operating points if available
         if has_operating_points and operating_points:
             
+            # Define unique colors for each operating point
+            point_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', 
+                          '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52C67D']
+            
             # Calculate smart label positions to avoid overlaps
             label_positions = []
             
@@ -140,21 +144,19 @@ def process_sheet_data(df, sheet_name="ACHE"):
                 flow = point['flowrate']
                 case = point['case']
                 
-                # Check if point is in safe zone
-                # Interpolate to find the limit at this temperature
-                limit_at_temp = np.interp(temp, df['Temperature_Inlet'], df['Flowrate_Constraint_Min'])
+                # Assign unique color to each point
+                point_color = point_colors[idx % len(point_colors)]
                 
-                is_safe = flow <= limit_at_temp
-                
-                # Plot the operating point - all circles, green for safe, red for unsafe
-                point_color = 'green' if is_safe else 'red'
-                
+                # Plot the operating point with unique color and add to legend
                 ax.scatter(
                     temp, flow,
                     color=point_color,
                     marker='o',
-                    s=300,
-                    zorder=10
+                    s=150,
+                    edgecolors='black',
+                    linewidths=1.5,
+                    zorder=10,
+                    label=f'{case}'
                 )
                 
                 # Smart label positioning to avoid overlaps
@@ -209,17 +211,17 @@ def process_sheet_data(df, sheet_name="ACHE"):
                 # Store this label position
                 label_positions.append((label_x, label_y))
                 
-                # Add case label with temperature and flowrate
+                # Add label with only temperature and flowrate (no case name)
                 ax.annotate(
-                    f'{case}\n({temp:.1f}°C, {flow:.0f} kg/hr)',
+                    f'({temp:.1f}°C, {flow:.0f} kg/hr)',
                     xy=(temp, flow),
                     xytext=(label_x, label_y),
-                    fontsize=9,
+                    fontsize=8,
                     fontweight='bold',
                     ha=ha,
                     va=va,
-                    bbox=dict(boxstyle="round,pad=0.4", fc='white', alpha=0.9, edgecolor='black', linewidth=1),
-                    arrowprops=dict(arrowstyle='->', color='black', lw=1.5)
+                    bbox=dict(boxstyle="round,pad=0.3", fc='white', alpha=0.9, edgecolor=point_color, linewidth=1.5),
+                    arrowprops=dict(arrowstyle='->', color=point_color, lw=1.5)
                 )
 
         # Plot aesthetics
@@ -228,7 +230,40 @@ def process_sheet_data(df, sheet_name="ACHE"):
         ax.set_xlabel('Tube Side Inlet Temperature (°C)', fontsize=14)
         ax.set_ylabel('Tube Side Mass Flowrate (kg/hr)', fontsize=14)
         ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+        
+        # Create two separate legends
+        # First legend for envelope curves
+        handles, labels = ax.get_legend_handles_labels()
+        
+        # Separate operating points from other elements
+        envelope_handles = []
+        envelope_labels = []
+        operating_handles = []
+        operating_labels = []
+        
+        for handle, label in zip(handles, labels):
+            if label in ['Area Ratio', 'Allowable Pressure Drop Limit (0.7 bar)', 
+                        'Inlet Nozzle Momentum Limit ($7000-\\rho v^2$)', 
+                        'Safe Operating Zone (Below All Curves)', 
+                        'Limiting Curve Shift Point']:
+                envelope_handles.append(handle)
+                envelope_labels.append(label)
+            else:
+                operating_handles.append(handle)
+                operating_labels.append(label)
+        
+        # Create first legend for envelope curves at upper right
+        legend1 = ax.legend(envelope_handles, envelope_labels, 
+                          loc='upper right', fontsize=9, framealpha=0.9,
+                          title='Operating Envelope')
+        ax.add_artist(legend1)  # Add first legend back to plot
+        
+        # Create second legend for operating points at lower right
+        if operating_handles:
+            ax.legend(operating_handles, operating_labels, 
+                     loc='lower right', fontsize=9, framealpha=0.9,
+                     title='Operating Cases', ncol=1)
+        
         ax.set_ylim(bottom=0)
 
         plt.tight_layout()
@@ -447,9 +482,10 @@ with st.expander("📖 Instructions - Click to expand", expanded=True):
         - Excel file with embedded plots
         
         #### 🎯 Operating Point Markers
-        - **Green circles**: Safe operating points
-        - **Red circles**: Unsafe operating points
-        - Case names labeled for each point
+        - Each operating case has a unique color
+        - Smaller circles mark current operating conditions
+        - Temperature and flowrate shown in labels
+        - Case names appear in separate legend
         """)
 
 st.markdown("---")
