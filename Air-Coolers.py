@@ -178,9 +178,9 @@ def process_sheet_data(df):
                     label=f'{case}'
                 ) 
                 # Add case label near the point
-                'offset_x = 3 if idx % 2 == 0 else -3
-                'offset_y = 3000 if idx % 2 == 0 else -3000
-                'ha = 'left' if idx % 2 == 0 else 'right'
+                offset_x = 0 if idx % 2 == 0 else 0
+                offset_y = 0 if idx % 2 == 0 else 0
+                ha = 'left' if idx % 2 == 0 else 'right'
                 
                 ax.annotate(
                     f'{case}\n({temp:.1f}°C, {flow:.0f} kg/hr)',
