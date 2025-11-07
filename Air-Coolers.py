@@ -121,26 +121,26 @@ def process_sheet_data(df):
             alpha=0.8,
             label='Safe Operating Zone (Below All Curves)'
         )
-"""
+
         # Annotate shift point
-        if shift_temp and shift_flow:
-            ax.scatter(
-                shift_temp, shift_flow,
-                color='black',
-                marker='x',
-                s=200,
-                zorder=5,
-                label='Limiting Curve Shift Point'
-            )
-            ax.annotate(
-                f'Limiting Curve Shifts to {shift_to}\n@ {shift_temp:.1f}°C',
-                xy=(shift_temp, shift_flow),
-                xytext=(shift_temp + 5, shift_flow + 5000),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
-                fontsize=10,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8)
-            )
-"""
+        #if shift_temp and shift_flow:
+        #    ax.scatter(
+        #        shift_temp, shift_flow,
+        #        color='black',
+        #        marker='x',
+        #        s=200,
+        #        zorder=5,
+        #        label='Limiting Curve Shift Point'
+        #    )
+        #    ax.annotate(
+        #        f'Limiting Curve Shifts to {shift_to}\n@ {shift_temp:.1f}°C',
+        #        xy=(shift_temp, shift_flow),
+        #        xytext=(shift_temp + 5, shift_flow + 5000),
+        #        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
+        #        fontsize=10,
+        #        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8)
+        #    )
+
         # Plot operating points if available
         if has_operating_points and operating_points:
             
