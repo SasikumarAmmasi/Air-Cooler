@@ -124,7 +124,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
             df['Temperature_Inlet'],
             0,
             df['Flowrate_Constraint_Min'],
-            color='#4DF04D',
+            color='#76F5C6',
             alpha=0.6,
             label='Safe Operating Zone (Below All Curves)'
         )
@@ -135,8 +135,8 @@ def process_sheet_data(df, sheet_name="ACHE"):
         if has_operating_points and operating_points:
             
             # Define unique colors for each operating point
-            point_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', 
-                          '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52C67D']
+            point_colors = ['#B51818', '#18B5A5', '#185EB5', '#7B18B5', '#B518A0', 
+                          '#B5182D', '#73064B', '#065773', '#117306', '#FACE2F']
             
             for idx, point in enumerate(operating_points):
                 temp = point['temperature']
