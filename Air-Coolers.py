@@ -41,9 +41,10 @@ def process_sheet_data(df, sheet_name="ACHE"):
             
             for _, row in op_data.iterrows():
                 operating_points.append({
-
+                    'temperature': float(row[operating_temp_col]),
+                    'flowrate': float(row[operating_flow_col]),
                     'case': str(row[operating_case_col])
-                }
+                })
             
             # Remove operating point columns for envelope calculation
             df = df.iloc[:, :4]
@@ -128,15 +129,14 @@ def process_sheet_data(df, sheet_name="ACHE"):
             label='Safe Operating Zone (Below All Curves)'
         )
 
+        # Shift point info stored but not plotted
+
         # Plot operating points if available
         if has_operating_points and operating_points:
             
             # Define unique colors for each operating point
             point_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', 
                           '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52C67D']
-            
-            # Calculate smart label positions to avoid overlaps
-            label_positions = []
             
             for idx, point in enumerate(operating_points):
                 temp = point['temperature']
@@ -146,81 +146,15 @@ def process_sheet_data(df, sheet_name="ACHE"):
                 # Assign unique color to each point
                 point_color = point_colors[idx % len(point_colors)]
                 
-                # Plot the operating point with unique color and add to legend
+                # Plot the operating point with unique color - solid, no border
+                # Add case name with temp and flowrate to legend
                 ax.scatter(
                     temp, flow,
                     color=point_color,
                     marker='o',
                     s=150,
-                    edgecolors='black',
-                    linewidths=1.5,
                     zorder=10,
-                    label=f'{case}'
-                )
-                
-                # Smart label positioning to avoid overlaps
-                # Define possible positions (8 directions around the point)
-                temp_range = df['Temperature_Inlet'].max() - df['Temperature_Inlet'].min()
-                flow_range = df['Flowrate_Actual'].max() - df['Flowrate_Actual'].min()
-                
-                offset_options = [
-                    (temp_range * 0.03, flow_range * 0.08, 'left', 'bottom'),      # top-right
-                    (-temp_range * 0.03, flow_range * 0.08, 'right', 'bottom'),    # top-left
-                    (temp_range * 0.03, -flow_range * 0.08, 'left', 'top'),        # bottom-right
-                    (-temp_range * 0.03, -flow_range * 0.08, 'right', 'top'),      # bottom-left
-                    (temp_range * 0.05, 0, 'left', 'center'),                      # right
-                    (-temp_range * 0.05, 0, 'right', 'center'),                    # left
-                    (0, flow_range * 0.10, 'center', 'bottom'),                    # top
-                    (0, -flow_range * 0.10, 'center', 'top'),                      # bottom
-                ]
-                
-                # Try each position and pick the first one that doesn't overlap
-                best_position = offset_options[idx % len(offset_options)]
-                min_overlap = float('inf')
-                
-                for offset_x, offset_y, ha, va in offset_options:
-                    label_x = temp + offset_x
-                    label_y = flow + offset_y
-                    
-                    # Check distance to all existing labels
-                    overlap_score = 0
-                    for prev_pos in label_positions:
-                        dx = (label_x - prev_pos[0]) / temp_range
-                        dy = (label_y - prev_pos[1]) / flow_range
-                        distance = np.sqrt(dx**2 + dy**2)
-                        if distance < 0.15:  # Too close threshold
-                            overlap_score += (0.15 - distance)
-                    
-                    # Check distance to all operating points
-                    for other_point in operating_points:
-                        dx = (label_x - other_point['temperature']) / temp_range
-                        dy = (label_y - other_point['flowrate']) / flow_range
-                        distance = np.sqrt(dx**2 + dy**2)
-                        if distance < 0.10:  # Too close to point
-                            overlap_score += (0.10 - distance) * 2
-                    
-                    if overlap_score < min_overlap:
-                        min_overlap = overlap_score
-                        best_position = (offset_x, offset_y, ha, va)
-                
-                offset_x, offset_y, ha, va = best_position
-                label_x = temp + offset_x
-                label_y = flow + offset_y
-                
-                # Store this label position
-                label_positions.append((label_x, label_y))
-                
-                # Add label with only temperature and flowrate (no case name)
-                ax.annotate(
-                    f'({temp:.1f}°C, {flow:.0f} kg/hr)',
-                    xy=(temp, flow),
-                    xytext=(label_x, label_y),
-                    fontsize=8,
-                    fontweight='bold',
-                    ha=ha,
-                    va=va,
-                    bbox=dict(boxstyle="round,pad=0.3", fc='white', alpha=0.9, edgecolor=point_color, linewidth=1.5),
-                    arrowprops=dict(arrowstyle='->', color=point_color, lw=1.5)
+                    label=f'{case} ({temp:.1f}°C, {flow:.0f} kg/hr)'
                 )
 
         # Plot aesthetics
@@ -243,8 +177,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
         for handle, label in zip(handles, labels):
             if label in ['Area Ratio', 'Allowable Pressure Drop Limit (0.7 bar)', 
                         'Inlet Nozzle Momentum Limit ($7000-\\rho v^2$)', 
-                        'Safe Operating Zone (Below All Curves)', 
-                        'Limiting Curve Shift Point']:
+                        'Safe Operating Zone (Below All Curves)']:
                 envelope_handles.append(handle)
                 envelope_labels.append(label)
             else:
@@ -482,9 +415,9 @@ with st.expander("📖 Instructions - Click to expand", expanded=True):
         
         #### 🎯 Operating Point Markers
         - Each operating case has a unique color
-        - Smaller circles mark current operating conditions
-        - Temperature and flowrate shown in labels
-        - Case names appear in separate legend
+        - Solid colored circles (no borders)
+        - Case name, temperature, and flowrate in legend
+        - No on-plot labels for cleaner visualization
         """)
 
 st.markdown("---")
