@@ -39,7 +39,11 @@ def process_sheet_data(df, sheet_name="ACHE"):
             # Extract unique operating points (remove NaN rows)
             op_data = df[[operating_temp_col, operating_flow_col, operating_case_col]].dropna()
             
+            for _, row in op_data.iterrows():
+                operating_points.append({
 
+                    'case': str(row[operating_case_col])
+                }
             
             # Remove operating point columns for envelope calculation
             df = df.iloc[:, :4]
