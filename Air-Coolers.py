@@ -9,9 +9,16 @@ import os
 import streamlit as st
 import tempfile
 
-def process_sheet_data(df):
+def process_sheet_data(df, sheet_name="ACHE"):
     """
     Process a single sheet's data and return the figure and analysis results.
+    
+    Parameters:
+    -----------
+    df : DataFrame
+        The data to process
+    sheet_name : str
+        Name of the sheet (used in plot title)
     """
     try:
         # Check if we have operating point columns
@@ -216,7 +223,7 @@ def process_sheet_data(df):
                 )
 
         # Plot aesthetics
-        ax.set_title('ACHE Operating Envelope: Tube Side Mass Flowrate vs. Inlet Temperature',
+        ax.set_title(f'{sheet_name} Operating Envelope: Tube Side Mass Flowrate vs. Inlet Temperature',
                      fontsize=18, fontweight='bold')
         ax.set_xlabel('Tube Side Inlet Temperature (°C)', fontsize=14)
         ax.set_ylabel('Tube Side Mass Flowrate (kg/hr)', fontsize=14)
@@ -281,8 +288,8 @@ def process_excel_workbook(input_file, output_file=None):
                     # Read the sheet
                     df = pd.read_excel(input_file, sheet_name=sheet_name)
 
-                    # Process the data and create plot
-                    fig, analysis_text = process_sheet_data(df)
+                    # Process the data and create plot (pass sheet_name for title)
+                    fig, analysis_text = process_sheet_data(df, sheet_name)
 
                     if fig is not None:
                         # Save the original data to the output workbook
