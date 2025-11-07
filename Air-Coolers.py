@@ -152,7 +152,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
                     temp, flow,
                     color=point_color,
                     marker='o',
-                    s=150,
+                    s=125,
                     zorder=10,
                     label=f'{case} ({temp:.1f}°C, {flow:.0f} kg/hr)'
                 )
@@ -186,14 +186,14 @@ def process_sheet_data(df, sheet_name="ACHE"):
         
         # Create first legend for envelope curves at upper right
         legend1 = ax.legend(envelope_handles, envelope_labels, 
-                          loc='upper right', fontsize=9, framealpha=0.9,
+                          loc='upper right', fontsize=10, framealpha=0.7,
                           title='Operating Envelope')
         ax.add_artist(legend1)  # Add first legend back to plot
         
         # Create second legend for operating points at lower right
         if operating_handles:
             ax.legend(operating_handles, operating_labels, 
-                     loc='lower right', fontsize=9, framealpha=0.9,
+                     loc='lower right', fontsize=10, framealpha=0.9,
                      title='Operating Cases', ncol=1)
         
         ax.set_ylim(bottom=0)
