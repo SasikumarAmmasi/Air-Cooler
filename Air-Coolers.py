@@ -14,6 +14,34 @@ def process_sheet_data(df):
     Process a single sheet's data and return the figure and analysis results.
     """
     try:
+        # Check if we have operating point columns
+        has_operating_points = False
+        operating_points = []
+        
+        # Store original column count to detect operating point columns
+        original_cols = df.columns.tolist()
+        
+        # Check if last 3 columns are operating point data
+        if len(df.columns) >= 7:
+            # Assume last 3 columns are: Current Operating Temperature, Current Operating Flowrate, Operating Case
+            has_operating_points = True
+            operating_temp_col = df.columns[-3]
+            operating_flow_col = df.columns[-2]
+            operating_case_col = df.columns[-1]
+            
+            # Extract unique operating points (remove NaN rows)
+            op_data = df[[operating_temp_col, operating_flow_col, operating_case_col]].dropna()
+            
+            for _, row in op_data.iterrows():
+                operating_points.append({
+                    'temperature': float(row[operating_temp_col]),
+                    'flowrate': float(row[operating_flow_col]),
+                    'case': str(row[operating_case_col])
+                })
+            
+            # Remove operating point columns for envelope calculation
+            df = df.iloc[:, :4]
+        
         # Data Cleaning and Column Renaming
         df.columns = [
             'Temperature_Inlet',
@@ -113,13 +141,77 @@ def process_sheet_data(df):
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8)
             )
 
+        # Plot operating points if available
+        operating_status_text = ""
+        if has_operating_points and operating_points:
+            # Define colors for different points
+            point_colors = ['#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#9D84B7', '#FF8C42']
+            
+            analysis_text += "\n\n" + "="*50 + "\nOperating Points Analysis:\n" + "="*50
+            
+            for idx, point in enumerate(operating_points):
+                temp = point['temperature']
+                flow = point['flowrate']
+                case = point['case']
+                color = point_colors[idx % len(point_colors)]
+                
+                # Check if point is in safe zone
+                # Interpolate to find the limit at this temperature
+                limit_at_temp = np.interp(temp, df['Temperature_Inlet'], df['Flowrate_Constraint_Min'])
+                
+                is_safe = flow <= limit_at_temp
+                status = "✓ SAFE" if is_safe else "✗ UNSAFE"
+                safety_margin = ((limit_at_temp - flow) / limit_at_temp * 100) if is_safe else ((flow - limit_at_temp) / limit_at_temp * 100)
+                
+                # Plot the operating point
+                marker_style = 'o' if is_safe else '^'
+                edge_color = 'green' if is_safe else 'red'
+                
+                ax.scatter(
+                    temp, flow,
+                    color=color,
+                    marker=marker_style,
+                    s=300,
+                    edgecolors=edge_color,
+                    linewidths=3,
+                    zorder=10,
+                    label=f'{case}'
+                )
+                
+                # Add case label near the point
+                offset_x = 3 if idx % 2 == 0 else -3
+                offset_y = 3000 if idx % 2 == 0 else -3000
+                ha = 'left' if idx % 2 == 0 else 'right'
+                
+                ax.annotate(
+                    f'{case}\n({temp:.1f}°C, {flow:.0f} kg/hr)',
+                    xy=(temp, flow),
+                    xytext=(temp + offset_x, flow + offset_y),
+                    fontsize=9,
+                    fontweight='bold',
+                    ha=ha,
+                    bbox=dict(boxstyle="round,pad=0.4", fc=color, alpha=0.7, edgecolor=edge_color, linewidth=2),
+                    arrowprops=dict(arrowstyle='->', color=edge_color, lw=2)
+                )
+                
+                # Add to analysis text
+                analysis_text += f"\n\n{case}:"
+                analysis_text += f"\n  Temperature: {temp:.1f} °C"
+                analysis_text += f"\n  Flowrate: {flow:.0f} kg/hr"
+                analysis_text += f"\n  Status: {status}"
+                if is_safe:
+                    analysis_text += f"\n  Safety Margin: {safety_margin:.1f}% below limit"
+                else:
+                    analysis_text += f"\n  EXCEEDANCE: {safety_margin:.1f}% above limit"
+                analysis_text += f"\n  Limit at this temperature: {limit_at_temp:.0f} kg/hr"
+
         # Plot aesthetics
         ax.set_title('ACHE Operating Envelope: Tube Side Mass Flowrate vs. Inlet Temperature',
                      fontsize=18, fontweight='bold')
         ax.set_xlabel('Tube Side Inlet Temperature (°C)', fontsize=14)
         ax.set_ylabel('Tube Side Mass Flowrate (kg/hr)', fontsize=14)
         ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(loc='upper right', fontsize=10)
+        ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
         ax.set_ylim(bottom=0)
 
         plt.tight_layout()
@@ -202,7 +294,7 @@ def process_excel_workbook(input_file, output_file=None):
 
                         # Insert the plot image
                         img = Image(img_buffer)
-                        img.anchor = 'F2'
+                        img.anchor = 'H2'  # Moved further right to accommodate more columns
                         worksheet.add_image(img)
 
                         # Display in Streamlit
@@ -285,9 +377,11 @@ with st.sidebar:
     - Multi-sheet processing
     - Constraint analysis
     - Safe zone visualization
+    - Operating point tracking
+    - Safety status assessment
     - Automated reporting
     
-    **Version:** 1.0  
+    **Version:** 2.0  
     **Updated:** 2025
     """)
 
@@ -307,11 +401,16 @@ with st.expander("📖 Instructions - Click to expand", expanded=True):
         - Multiple worksheets supported
         - Each sheet should contain ACHE data
         
-        #### 📊 Expected Columns
+        #### 📊 Required Columns (in order)
         1. Tube Side Inlet Temperature
         2. Tube Side Mass Flowrate
         3. Tube Side Pressure Drop Limit
         4. Inlet Nozzle Momentum Limit
+        
+        #### 📍 Optional Operating Point Columns
+        5. Current Operating Temperature
+        6. Current Operating Flowrate
+        7. Operating Case Name
         """)
     
     with col2:
@@ -326,7 +425,15 @@ with st.expander("📖 Instructions - Click to expand", expanded=True):
         - Operating envelope plots
         - Constraint shift analysis
         - Safe operating zones
+        - Operating point status (SAFE/UNSAFE)
+        - Safety margins
         - Excel file with embedded plots
+        
+        #### 🎯 Operating Point Markers
+        - **Circle (○)**: Safe operating point
+        - **Triangle (△)**: Unsafe operating point
+        - **Green border**: Within safe zone
+        - **Red border**: Outside safe zone
         """)
 
 st.markdown("---")
@@ -402,18 +509,22 @@ else:
     # Sample data format
     with st.expander("💡 View Sample Data Format"):
         sample_df = pd.DataFrame({
-            'Tube Side Inlet Temperature': [122.2, 126.7, 131.1],
-            'Tube side Mass Flowrate': [148000, 133000, 121000],
-            'Tube side Pressure Drop limit (0.7 bar)': [74105, 73820, 73547],
-            'Inlet Nozzle Momentum (7000 pv²)': [117000, 116000, 114000]
+            'Tube Side Inlet Temperature': [122.2, 126.7, 131.1, '', ''],
+            'Tube side Mass Flowrate': [148000, 133000, 121000, '', ''],
+            'Tube side Pressure Drop limit (0.7 bar)': [74105, 73820, 73547, '', ''],
+            'Inlet Nozzle Momentum (7000 pv²)': [117000, 116000, 114000, '', ''],
+            'Current Operating Temperature': ['', '', '', 116, 118.4],
+            'Current Operating Flowrate': ['', '', '', 69700, 75400],
+            'Operating Case': ['', '', '', 'Case 1', 'Case 2']
         })
         st.dataframe(sample_df, use_container_width=True)
+        st.caption("Note: Operating point columns can have data in any rows (they will be extracted automatically)")
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666;'>
-    <p>🚀 ACHE Operating Envelope Analyzer | Built with Streamlit</p>
+    <p>🚀 ACHE Operating Envelope Analyzer v2.0 | Built with Streamlit</p>
     <p style='font-size: 0.8em;'>For support or questions, contact your system administrator</p>
 </div>
 """, unsafe_allow_html=True)
