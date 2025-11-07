@@ -122,27 +122,11 @@ def process_sheet_data(df):
             label='Safe Operating Zone (Below All Curves)'
         )
 
-        # Annotate shift point
-        #if shift_temp and shift_flow:
-        #    ax.scatter(
-        #        shift_temp, shift_flow,
-        #        color='black',
-        #        marker='x',
-        #        s=200,
-        #        zorder=5,
-        #        label='Limiting Curve Shift Point'
-        #    )
-        #    ax.annotate(
-        #        f'Limiting Curve Shifts to {shift_to}\n@ {shift_temp:.1f}°C',
-        #        xy=(shift_temp, shift_flow),
-        #        xytext=(shift_temp + 5, shift_flow + 5000),
-        #        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=8),
-        #        fontsize=10,
-        #        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8)
-        #    )
-
         # Plot operating points if available
         if has_operating_points and operating_points:
+            
+            # Calculate smart label positions to avoid overlaps
+            label_positions = []
             
             for idx, point in enumerate(operating_points):
                 temp = point['temperature']
@@ -163,25 +147,72 @@ def process_sheet_data(df):
                     color=point_color,
                     marker='o',
                     s=300,
-                    edgecolors='black',
-                    linewidths=2,
                     zorder=10
                 )
                 
-                # Add case label near the point
-                offset_x = 3 if idx % 2 == 0 else -3
-                offset_y = 3000 if idx % 2 == 0 else -3000
-                ha = 'left' if idx % 2 == 0 else 'right'
+                # Smart label positioning to avoid overlaps
+                # Define possible positions (8 directions around the point)
+                temp_range = df['Temperature_Inlet'].max() - df['Temperature_Inlet'].min()
+                flow_range = df['Flowrate_Actual'].max() - df['Flowrate_Actual'].min()
                 
+                offset_options = [
+                    (temp_range * 0.03, flow_range * 0.08, 'left', 'bottom'),      # top-right
+                    (-temp_range * 0.03, flow_range * 0.08, 'right', 'bottom'),    # top-left
+                    (temp_range * 0.03, -flow_range * 0.08, 'left', 'top'),        # bottom-right
+                    (-temp_range * 0.03, -flow_range * 0.08, 'right', 'top'),      # bottom-left
+                    (temp_range * 0.05, 0, 'left', 'center'),                      # right
+                    (-temp_range * 0.05, 0, 'right', 'center'),                    # left
+                    (0, flow_range * 0.10, 'center', 'bottom'),                    # top
+                    (0, -flow_range * 0.10, 'center', 'top'),                      # bottom
+                ]
+                
+                # Try each position and pick the first one that doesn't overlap
+                best_position = offset_options[idx % len(offset_options)]
+                min_overlap = float('inf')
+                
+                for offset_x, offset_y, ha, va in offset_options:
+                    label_x = temp + offset_x
+                    label_y = flow + offset_y
+                    
+                    # Check distance to all existing labels
+                    overlap_score = 0
+                    for prev_pos in label_positions:
+                        dx = (label_x - prev_pos[0]) / temp_range
+                        dy = (label_y - prev_pos[1]) / flow_range
+                        distance = np.sqrt(dx**2 + dy**2)
+                        if distance < 0.15:  # Too close threshold
+                            overlap_score += (0.15 - distance)
+                    
+                    # Check distance to all operating points
+                    for other_point in operating_points:
+                        dx = (label_x - other_point['temperature']) / temp_range
+                        dy = (label_y - other_point['flowrate']) / flow_range
+                        distance = np.sqrt(dx**2 + dy**2)
+                        if distance < 0.10:  # Too close to point
+                            overlap_score += (0.10 - distance) * 2
+                    
+                    if overlap_score < min_overlap:
+                        min_overlap = overlap_score
+                        best_position = (offset_x, offset_y, ha, va)
+                
+                offset_x, offset_y, ha, va = best_position
+                label_x = temp + offset_x
+                label_y = flow + offset_y
+                
+                # Store this label position
+                label_positions.append((label_x, label_y))
+                
+                # Add case label with temperature and flowrate
                 ax.annotate(
-                    f'{case}',
+                    f'{case}\n({temp:.1f}°C, {flow:.0f} kg/hr)',
                     xy=(temp, flow),
-                    xytext=(temp + offset_x, flow + offset_y),
-                    fontsize=10,
+                    xytext=(label_x, label_y),
+                    fontsize=9,
                     fontweight='bold',
                     ha=ha,
-                    bbox=dict(boxstyle="round,pad=0.4", fc='white', alpha=0.8, edgecolor=point_color, linewidth=2),
-                    arrowprops=dict(arrowstyle='->', color=point_color, lw=2)
+                    va=va,
+                    bbox=dict(boxstyle="round,pad=0.4", fc='white', alpha=0.9, edgecolor='black', linewidth=1),
+                    arrowprops=dict(arrowstyle='->', color='black', lw=1.5)
                 )
 
         # Plot aesthetics
