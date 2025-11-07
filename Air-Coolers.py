@@ -142,69 +142,47 @@ def process_sheet_data(df):
             )
 
         # Plot operating points if available
-        operating_status_text = ""
         if has_operating_points and operating_points:
-            # Define colors for different points
-            point_colors = ['#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#9D84B7', '#FF8C42']
-            
-            analysis_text += "\n\n" + "="*50 + "\nOperating Points Analysis:\n" + "="*50
             
             for idx, point in enumerate(operating_points):
                 temp = point['temperature']
                 flow = point['flowrate']
                 case = point['case']
-                color = point_colors[idx % len(point_colors)]
                 
                 # Check if point is in safe zone
                 # Interpolate to find the limit at this temperature
                 limit_at_temp = np.interp(temp, df['Temperature_Inlet'], df['Flowrate_Constraint_Min'])
                 
                 is_safe = flow <= limit_at_temp
-                status = "✓ SAFE" if is_safe else "✗ UNSAFE"
-                safety_margin = ((limit_at_temp - flow) / limit_at_temp * 100) if is_safe else ((flow - limit_at_temp) / limit_at_temp * 100)
                 
-                # Plot the operating point
-                marker_style = 'o' if is_safe else '\u25A0'
-                edge_color = 'green' if is_safe else 'red'
+                # Plot the operating point - all circles, green for safe, red for unsafe
+                point_color = 'green' if is_safe else 'red'
                 
                 ax.scatter(
                     temp, flow,
-                    color=color,
-                    marker=marker_style,
+                    color=point_color,
+                    marker='o',
                     s=300,
-                    edgecolors=edge_color,
-                    linewidths=3,
-                    zorder=10,
-                    label=f'{case}'
-                ) 
+                    edgecolors='black',
+                    linewidths=2,
+                    zorder=10
+                )
+                
                 # Add case label near the point
-                offset_x = 0 if idx % 2 == 0 else 0
-                offset_y = 0 if idx % 2 == 0 else 0
+                offset_x = 3 if idx % 2 == 0 else -3
+                offset_y = 3000 if idx % 2 == 0 else -3000
                 ha = 'left' if idx % 2 == 0 else 'right'
                 
                 ax.annotate(
-                    f'{case}\n({temp:.1f}°C, {flow:.0f} kg/hr)',
+                    f'{case}',
                     xy=(temp, flow),
                     xytext=(temp + offset_x, flow + offset_y),
-                    fontsize=9,
+                    fontsize=10,
                     fontweight='bold',
                     ha=ha,
-                    bbox=dict(boxstyle="round,pad=0.4", fc=color, alpha=0.7, edgecolor=edge_color, linewidth=2),
-                    arrowprops=dict(arrowstyle='->', color=edge_color, lw=2)
+                    bbox=dict(boxstyle="round,pad=0.4", fc='white', alpha=0.8, edgecolor=point_color, linewidth=2),
+                    arrowprops=dict(arrowstyle='->', color=point_color, lw=2)
                 )
-                
-                # Add to analysis text
-                analysis_text += f"\n\n{case}:"
-                """
-                analysis_text += f"\n  Temperature: {temp:.1f} °C"
-                analysis_text += f"\n  Flowrate: {flow:.0f} kg/hr"
-                """
-                analysis_text += f"\n  Status: {status}"
-                if is_safe:
-                    analysis_text += f"\n  Safety Margin: {safety_margin:.1f}% below limit"
-                else:
-                    analysis_text += f"\n  EXCEEDANCE: {safety_margin:.1f}% above limit"
-                analysis_text += f"\n  Limit at this temperature: {limit_at_temp:.0f} kg/hr"
 
         # Plot aesthetics
         ax.set_title('ACHE Operating Envelope: Tube Side Mass Flowrate vs. Inlet Temperature',
@@ -431,10 +409,9 @@ with st.expander("📖 Instructions - Click to expand", expanded=True):
         - Excel file with embedded plots
         
         #### 🎯 Operating Point Markers
-        - **Circle (○)**: Safe operating point
-        - **Triangle (△)**: Unsafe operating point
-        - **Green border**: Within safe zone
-        - **Red border**: Outside safe zone
+        - **Green circles**: Safe operating points
+        - **Red circles**: Unsafe operating points
+        - Case names labeled for each point
         """)
 
 st.markdown("---")
