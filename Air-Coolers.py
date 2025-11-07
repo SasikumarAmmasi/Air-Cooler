@@ -193,7 +193,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
         # Create second legend for operating points at lower right
         if operating_handles:
             ax.legend(operating_handles, operating_labels, 
-                     loc='center right', fontsize=10, framealpha=0.9,
+                     loc='upper left', fontsize=10, framealpha=0.9,
                      title='Operating Cases', ncol=1)
         
         ax.set_ylim(bottom=0)
