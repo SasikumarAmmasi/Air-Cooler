@@ -121,7 +121,7 @@ def process_sheet_data(df):
             alpha=0.8,
             label='Safe Operating Zone (Below All Curves)'
         )
-
+"""
         # Annotate shift point
         if shift_temp and shift_flow:
             ax.scatter(
@@ -140,7 +140,7 @@ def process_sheet_data(df):
                 fontsize=10,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8)
             )
-
+"""
         # Plot operating points if available
         if has_operating_points and operating_points:
             
