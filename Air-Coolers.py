@@ -96,7 +96,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
             df['Temperature_Inlet'],
             df['Flowrate_Actual'],
             label='Area Ratio',
-            color='#FF00FF',
+            color='#002AFF',
             linestyle='-',
             linewidth=3
         )
@@ -105,7 +105,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
             df['Temperature_Inlet'],
             df['Flowrate_PD_Limit'],
             label='Allowable Pressure Drop Limit (0.7 bar)',
-            color='red',
+            color='RED',
             linestyle='-',
             linewidth=2.5
         )
@@ -114,7 +114,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
             df['Temperature_Inlet'],
             df['Flowrate_Momentum_Limit'],
             label=r'Inlet Nozzle Momentum Limit ($7000-\rho v^2$)',
-            color='#228B22',
+            color='BLACK',
             linestyle='-.',
             linewidth=2.5
         )
@@ -124,7 +124,7 @@ def process_sheet_data(df, sheet_name="ACHE"):
             df['Temperature_Inlet'],
             0,
             df['Flowrate_Constraint_Min'],
-            color='#76F5C6',
+            color='#96DEFA',
             alpha=0.6,
             label='Safe Operating Zone (Below All Curves)'
         )
